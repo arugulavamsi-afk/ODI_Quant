@@ -60,7 +60,25 @@ _last_pipeline_result = None
 
 
 # ─── Static frontend ──────────────────────────────────────────────────────────
-FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+# Try multiple locations so it works locally AND on Render/cloud
+def _find_frontend_dir() -> str:
+    candidates = [
+        # Relative to this file: backend/../frontend
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"),
+        # Relative to CWD (set to backend/ by start_server.py): ../frontend
+        os.path.join(os.getcwd(), "..", "frontend"),
+        # Absolute from repo root env var (optional override)
+        os.path.join(os.environ.get("PROJECT_ROOT", ""), "frontend"),
+    ]
+    for path in candidates:
+        norm = os.path.normpath(path)
+        if os.path.isdir(norm):
+            logger.info(f"Frontend found at: {norm}")
+            return norm
+    logger.warning("Frontend directory not found in any candidate path")
+    return os.path.normpath(candidates[0])  # fallback
+
+FRONTEND_DIR = _find_frontend_dir()
 
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -71,12 +89,15 @@ async def serve_dashboard():
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="Frontend not found")
+    raise HTTPException(status_code=404, detail=f"Frontend not found at {FRONTEND_DIR}")
 
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    index_path = os.path.join(FRONTEND_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail=f"Frontend not found at {FRONTEND_DIR}")
 
 
 # ─── API Endpoints ────────────────────────────────────────────────────────────
