@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Read(//c/Users/sruja/Desktop/**)",
+      "Read(//c/Users/sruja/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**)",
+      "Bash(pip show:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

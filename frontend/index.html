@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ODI Quant — NSE Day Trading Scanner</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ── NAVBAR ──────────────────────────────────────────────────────────── -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <span class="nav-logo">⚡</span>
+    <span class="nav-title">ODI <span class="accent">Quant</span></span>
+    <span class="nav-subtitle">NSE Day Trading Scanner</span>
+  </div>
+  <div class="nav-controls">
+    <span class="last-run" id="lastRunTime">–</span>
+    <button class="btn-run" id="runBtn" onclick="runPipeline()">
+      <span class="btn-icon">▶</span> Run Analysis
+    </button>
+  </div>
+</nav>
+
+<!-- ── GLOBAL SENTIMENT BAR ────────────────────────────────────────────── -->
+<section class="sentiment-bar" id="sentimentBar">
+  <div class="sentiment-score-wrap">
+    <span class="sentiment-label">Global Sentiment</span>
+    <span class="sentiment-score" id="sentimentScore">–</span>
+    <span class="sentiment-badge" id="sentimentBadge">–</span>
+  </div>
+  <div class="sentiment-indices" id="sentimentIndices">
+    <!-- Populated by JS -->
+  </div>
+</section>
+
+<!-- ── SUMMARY CARDS ───────────────────────────────────────────────────── -->
+<section class="summary-row">
+  <div class="card card-total">
+    <div class="card-num" id="totalCount">–</div>
+    <div class="card-label">Analyzed</div>
+  </div>
+  <div class="card card-long">
+    <div class="card-num" id="longCount">–</div>
+    <div class="card-label">🔥 High Prob LONG</div>
+  </div>
+  <div class="card card-short">
+    <div class="card-num" id="shortCount">–</div>
+    <div class="card-label">🔻 High Prob SHORT</div>
+  </div>
+  <div class="card card-watch">
+    <div class="card-num" id="watchCount">–</div>
+    <div class="card-label">⚠️ Watchlist</div>
+  </div>
+</section>
+
+<!-- ── FILTER TABS ─────────────────────────────────────────────────────── -->
+<section class="filter-bar">
+  <button class="tab active" data-filter="ALL" onclick="setFilter(this, 'ALL')">ALL</button>
+  <button class="tab tab-long" data-filter="HIGH_PROB_LONG" onclick="setFilter(this, 'HIGH_PROB_LONG')">🔥 LONG</button>
+  <button class="tab tab-short" data-filter="HIGH_PROB_SHORT" onclick="setFilter(this, 'HIGH_PROB_SHORT')">🔻 SHORT</button>
+  <button class="tab tab-watch" data-filter="WATCHLIST" onclick="setFilter(this, 'WATCHLIST')">⚠️ WATCHLIST</button>
+  <div class="search-wrap">
+    <input type="text" id="searchBox" placeholder="Search symbol or sector..." oninput="applyFilters()" />
+  </div>
+</section>
+
+<!-- ── MAIN TABLE ──────────────────────────────────────────────────────── -->
+<section class="table-section">
+  <div class="table-wrapper">
+    <table class="stock-table" id="stockTable">
+      <thead>
+        <tr>
+          <th onclick="sortBy('rank')">#</th>
+          <th onclick="sortBy('symbol')">Symbol ↕</th>
+          <th>Sector</th>
+          <th onclick="sortBy('cmp')">CMP ↕</th>
+          <th onclick="sortBy('trend_bias')">Trend</th>
+          <th onclick="sortBy('volume_spike')">Vol Spike ↕</th>
+          <th onclick="sortBy('breakout_status')">Breakout</th>
+          <th onclick="sortBy('closing_strength')">Close% ↕</th>
+          <th onclick="sortBy('long_score')">L-Score ↕</th>
+          <th onclick="sortBy('short_score')">S-Score ↕</th>
+          <th onclick="sortBy('category')">Signal</th>
+          <th>Trade Levels</th>
+        </tr>
+      </thead>
+      <tbody id="stockTableBody">
+        <tr class="placeholder-row">
+          <td colspan="12">
+            <div class="placeholder-msg">
+              <span class="ph-icon">📊</span>
+              <p>No data loaded. Click <strong>Run Analysis</strong> to scan the market.</p>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── LOADER OVERLAY ──────────────────────────────────────────────────── -->
+<div class="loader-overlay" id="loaderOverlay" style="display:none">
+  <div class="loader-card">
+    <div class="spinner"></div>
+    <p class="loader-text" id="loaderText">Fetching market data...</p>
+    <p class="loader-sub">This may take 60–90 seconds</p>
+  </div>
+</div>
+
+<!-- ── DETAIL MODAL ────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
