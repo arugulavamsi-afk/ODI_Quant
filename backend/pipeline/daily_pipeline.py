@@ -156,8 +156,8 @@ def run_daily_pipeline(universe: dict = None) -> dict:
             classification = classify_stock(long_score, short_score)
             direction = classification["direction"]
 
-            # Risk levels
-            trade_levels = calculate_trade_levels(df, direction)
+            # Risk levels (pass atr from indicators as fallback in case df lacks ATR column)
+            trade_levels = calculate_trade_levels(df, direction, atr_value=indicators.get("atr"))
 
             # Explanation
             explanation = generate_explanation(

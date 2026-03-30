@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 
-def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_multiplier: float = 1.5) -> dict:
+def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = None, atr_multiplier: float = 1.5) -> dict:
     """
     Calculates trade entry, SL, and targets based on ATR.
 
@@ -24,13 +24,20 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_multiplier: flo
 
     Returns: trade levels dict
     """
-    if df is None or "ATR" not in df.columns or len(df) < 5:
+    if df is None or len(df) < 5:
         return {}
 
     try:
         last = df.iloc[-1]
         close = float(last["Close"])
-        atr = float(df["ATR"].iloc[-1])
+
+        # Use ATR from df column, fallback to passed atr_value, then 2% of price
+        if "ATR" in df.columns and not pd.isna(df["ATR"].iloc[-1]):
+            atr = float(df["ATR"].iloc[-1])
+        elif atr_value and atr_value > 0:
+            atr = float(atr_value)
+        else:
+            atr = close * 0.02
 
         if pd.isna(atr) or atr == 0:
             # Fallback: use 2% of price as ATR estimate
