@@ -1,7 +1,11 @@
 /* ── ODI Quant Dashboard ─────────────────────────────────────────────────── */
 'use strict';
 
-const API = '';           // Same origin – FastAPI serves this file
+// Use Render backend URL when running on a different origin (e.g. Netlify),
+// otherwise fall back to same-origin (local dev or Render itself).
+const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? ''
+  : 'https://odi-quant.onrender.com';
 let allStocks = [];       // Full dataset
 let currentFilter = 'ALL';
 let sortKey = 'rank';
@@ -286,13 +290,32 @@ function buildClosePctBar(cs, color) {
   </div>`;
 }
 
+function getSetupType(s) {
+  const bo = s.breakout_status || 'INSIDE';
+  const trend = s.trend_bias || 'NEUTRAL';
+  const vs = s.volume_spike ?? 1;
+  const dir = s.direction || 'LONG';
+  if (bo === 'BREAKOUT')      return vs >= 2 ? 'Volume Breakout' : 'Range Breakout';
+  if (bo === 'BREAKDOWN')     return vs >= 2 ? 'Volume Breakdown' : 'Range Breakdown';
+  if (bo === 'NEAR_BREAKOUT') return 'Near Breakout';
+  if (bo === 'NEAR_BREAKDOWN') return 'Near Breakdown';
+  if ((trend === 'BULLISH' && dir === 'LONG') || (trend === 'BEARISH' && dir === 'SHORT'))
+    return vs >= 2 ? 'Trend + Volume' : 'Trend Continuation';
+  if (vs >= 2) return 'Volume Surge';
+  return 'Mixed Setup';
+}
+
 function buildTradeLevels(s) {
   if (!s.entry) return '<span style="color:var(--text-dim)">–</span>';
-  const dir = s.direction || 'LONG';
+  const setup = getSetupType(s);
+  const dir = (s.direction || 'LONG').toUpperCase();
+  const setupClass = dir === 'LONG' ? 'setup-long' : 'setup-short';
   return `<div class="trade-levels">
+    <span class="tl-setup ${setupClass}">${setup}</span>
     <span class="tl-entry">E: ₹${fmt(s.entry)}</span>
     <span class="tl-sl">SL: ₹${fmt(s.stop_loss)}</span>
     <span class="tl-t1">T1: ₹${fmt(s.target1)}</span>
+    <span class="tl-t2">T2: ₹${fmt(s.target2)}</span>
   </div>`;
 }
 
@@ -323,13 +346,20 @@ function buildDetailContent(s) {
       ${statChip('Market Structure', ind.market_structure || '–')}
     </div>`;
 
+  const setup = getSetupType(s);
+  const dir = (s.direction || 'LONG').toUpperCase();
+  const setupClass = dir === 'LONG' ? 'setup-long' : 'setup-short';
+
   return `<div class="detail-grid">
     <div class="detail-section">
-      <h4>Setup Analysis</h4>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h4 style="margin:0">Setup Analysis</h4>
+        <span class="tl-setup ${setupClass}" style="font-size:11px;padding:3px 8px">${setup} · ${dir}</span>
+      </div>
       <pre style="font-size:11.5px;line-height:1.65">${explanation}</pre>
     </div>
     <div class="detail-section">
-      <h4>Trade Levels (${s.direction || 'LONG'})</h4>
+      <h4>Trade Levels</h4>
       ${levelsHtml}
       <h4 style="margin-top:14px">Key Metrics</h4>
       ${statsHtml}

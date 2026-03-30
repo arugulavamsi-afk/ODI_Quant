@@ -432,9 +432,23 @@ body {
   font-size: 10px;
 }
 
+.tl-setup {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.setup-long  { background: rgba(0,200,120,0.15); color: var(--green); border: 1px solid rgba(0,200,120,0.3); }
+.setup-short { background: rgba(255,80,80,0.15);  color: var(--red);   border: 1px solid rgba(255,80,80,0.3); }
+
 .tl-entry { color: var(--blue); }
 .tl-sl    { color: var(--red); }
 .tl-t1    { color: var(--green); }
+.tl-t2    { color: #7ecfaa; }
 
 /* Expandable detail row */
 .detail-row { display: none; }

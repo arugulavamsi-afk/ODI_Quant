@@ -100,6 +100,16 @@ async def root_redirect():
     raise HTTPException(status_code=404, detail=f"Frontend not found at {FRONTEND_DIR}")
 
 
+@app.get("/styles.css", include_in_schema=False)
+async def serve_css():
+    return FileResponse(os.path.join(FRONTEND_DIR, "styles.css"), media_type="text/css")
+
+
+@app.get("/app.js", include_in_schema=False)
+async def serve_js():
+    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"), media_type="application/javascript")
+
+
 # ─── API Endpoints ────────────────────────────────────────────────────────────
 
 @app.get("/api/run")
