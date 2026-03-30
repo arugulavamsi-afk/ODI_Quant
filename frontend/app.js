@@ -306,16 +306,18 @@ function getSetupType(s) {
 }
 
 function buildTradeLevels(s) {
-  if (!s.entry) return '<span style="color:var(--text-dim)">–</span>';
+  const trigger = s.entry_trigger || s.entry;
+  if (!trigger) return '<span style="color:var(--text-dim)">–</span>';
   const setup = getSetupType(s);
   const dir = (s.direction || 'LONG').toUpperCase();
   const setupClass = dir === 'LONG' ? 'setup-long' : 'setup-short';
+  const triggerLabel = dir === 'LONG' ? 'Buy above' : 'Sell below';
   return `<div class="trade-levels">
     <span class="tl-setup ${setupClass}">${setup}</span>
-    <span class="tl-entry">E: ₹${fmt(s.entry)}</span>
-    <span class="tl-sl">SL: ₹${fmt(s.stop_loss)}</span>
-    <span class="tl-t1">T1: ₹${fmt(s.target1)}</span>
-    <span class="tl-t2">T2: ₹${fmt(s.target2)}</span>
+    <span class="tl-entry">${triggerLabel}: ₹${fmt(trigger)}</span>
+    <span class="tl-sl">SL: ₹${fmt(s.stop_loss)} (${s.risk_pct?.toFixed(1)}%)</span>
+    <span class="tl-t1">T1: ₹${fmt(s.target1)}${s.rr_t1 ? ` · ${s.rr_t1}:1` : ''}</span>
+    <span class="tl-t2">T2: ₹${fmt(s.target2)}${s.rr_t2 ? ` · ${s.rr_t2}:1` : ''}</span>
   </div>`;
 }
 
@@ -328,12 +330,17 @@ function buildDetailContent(s) {
 
   const ind = s.indicators || {};
 
-  const levelsHtml = s.entry ? `
+  const trigger = s.entry_trigger || s.entry;
+  const triggerLabel = (s.direction || 'LONG').toUpperCase() === 'LONG' ? 'Enter above PDH' : 'Enter below PDL';
+  const levelsHtml = trigger ? `
     <div class="detail-levels">
-      <div class="dl-item"><div class="dl-label">Entry</div><div class="dl-value entry">₹${fmt(s.entry)}</div></div>
-      <div class="dl-item"><div class="dl-label">Stop Loss</div><div class="dl-value sl">₹${fmt(s.stop_loss)} (${s.risk_pct?.toFixed(1)}%)</div></div>
-      <div class="dl-item"><div class="dl-label">Target 1 (2:1)</div><div class="dl-value target">₹${fmt(s.target1)}</div></div>
-      <div class="dl-item"><div class="dl-label">Target 2 (3:1)</div><div class="dl-value target">₹${fmt(s.target2)}</div></div>
+      ${s.setup_note ? `<div class="dl-note">${s.setup_note}</div>` : ''}
+      <div class="dl-item"><div class="dl-label">${triggerLabel}</div><div class="dl-value entry">₹${fmt(trigger)}</div></div>
+      <div class="dl-item"><div class="dl-label">Stop Loss (${s.risk_pct?.toFixed(1)}% risk)</div><div class="dl-value sl">₹${fmt(s.stop_loss)}</div></div>
+      <div class="dl-item"><div class="dl-label">T1 · 1×ATR${s.rr_t1 ? ` · ${s.rr_t1}:1 RR` : ''}</div><div class="dl-value target">₹${fmt(s.target1)} <span class="dl-hint">Book 50%, move SL to breakeven</span></div></div>
+      <div class="dl-item"><div class="dl-label">T2 · 2×ATR${s.rr_t2 ? ` · ${s.rr_t2}:1 RR` : ''}</div><div class="dl-value target">₹${fmt(s.target2)} <span class="dl-hint">Book 30%</span></div></div>
+      <div class="dl-item"><div class="dl-label">T3 · 3×ATR${s.rr_t3 ? ` · ${s.rr_t3}:1 RR` : ''}</div><div class="dl-value target2">₹${fmt(s.target3)} <span class="dl-hint">Trail 20%</span></div></div>
+      ${s.position_size_1L ? `<div class="dl-item"><div class="dl-label">Position Size (₹1L risk)</div><div class="dl-value" style="color:var(--text)">${s.position_size_1L} shares</div></div>` : ''}
     </div>` : '';
 
   const statsHtml = `

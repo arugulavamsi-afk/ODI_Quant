@@ -66,6 +66,14 @@ def initialize_db():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_daily_results_date ON daily_results(run_date)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_global_sentiment_date ON global_sentiment(run_date)")
+
+        # Migrations: add new columns if they don't exist yet
+        for col, definition in [("target3", "REAL"), ("entry_trigger", "REAL")]:
+            try:
+                c.execute(f"ALTER TABLE daily_results ADD COLUMN {col} {definition}")
+            except Exception:
+                pass  # column already exists
+
         conn.commit()
         logger.info("Database initialized successfully")
     finally:
@@ -104,10 +112,11 @@ def save_results(run_date: str, stocks: list, global_sentiment: dict):
             c.execute("""
                 INSERT INTO daily_results (
                     run_date, symbol, name, sector, long_score, short_score,
-                    category, direction, entry, stop_loss, target1, target2, risk_pct,
+                    category, direction, entry, entry_trigger, stop_loss,
+                    target1, target2, target3, risk_pct,
                     explanation, indicators_json, long_signal_json, short_signal_json,
                     trade_levels_json, rank
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_date,
                 stock.get("symbol"),
@@ -118,9 +127,11 @@ def save_results(run_date: str, stocks: list, global_sentiment: dict):
                 classification.get("category", "NO_TRADE"),
                 classification.get("direction", "LONG"),
                 trade_levels.get("entry"),
+                trade_levels.get("entry_trigger"),
                 trade_levels.get("stop_loss"),
                 trade_levels.get("target1"),
                 trade_levels.get("target2"),
+                trade_levels.get("target3"),
                 trade_levels.get("risk_pct"),
                 stock.get("explanation", ""),
                 json.dumps(indicators),

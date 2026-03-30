@@ -208,19 +208,26 @@ def generate_explanation(
 
     # Trade levels
     if trade_levels:
-        entry = trade_levels.get("entry", close)
-        sl = trade_levels.get("stop_loss", 0)
-        t1 = trade_levels.get("target1", 0)
-        t2 = trade_levels.get("target2", 0)
+        trigger  = trade_levels.get("entry_trigger") or trade_levels.get("entry", close)
+        sl       = trade_levels.get("stop_loss", 0)
+        t1       = trade_levels.get("target1", 0)
+        t2       = trade_levels.get("target2", 0)
+        t3       = trade_levels.get("target3", 0)
         risk_pct = trade_levels.get("risk_pct", 0)
+        rr_t1    = trade_levels.get("rr_t1", 0)
+        rr_t2    = trade_levels.get("rr_t2", 0)
         pos_size = trade_levels.get("position_size_1L", 0)
+        note     = trade_levels.get("setup_note", "")
 
         lines.append("")
-        lines.append(f"Trade Levels ({direction}):")
-        lines.append(f"  Entry:  Rs.{entry:.2f}")
-        lines.append(f"  Stop:   Rs.{sl:.2f} ({risk_pct:.1f}% risk)")
-        lines.append(f"  Target1: Rs.{t1:.2f} (2:1 RR)")
-        lines.append(f"  Target2: Rs.{t2:.2f} (3:1 RR)")
-        lines.append(f"  Position Size (1L risk): {pos_size} shares")
+        lines.append(f"Day Trade Setup ({direction}):")
+        if note:
+            lines.append(f"  ~ {note}")
+        lines.append(f"  Entry Trigger: Rs.{trigger:.2f}")
+        lines.append(f"  Stop Loss:     Rs.{sl:.2f} ({risk_pct:.1f}% risk)")
+        lines.append(f"  Target 1 (1×ATR): Rs.{t1:.2f}  [{rr_t1:.1f}:1 RR] — Book 50%, move SL to breakeven")
+        lines.append(f"  Target 2 (2×ATR): Rs.{t2:.2f}  [{rr_t2:.1f}:1 RR] — Book 30%")
+        lines.append(f"  Target 3 (3×ATR): Rs.{t3:.2f}  — Trail remaining 20%")
+        lines.append(f"  Position Size (₹1L risk): {pos_size} shares")
 
     return "\n".join(lines)

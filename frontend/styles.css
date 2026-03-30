@@ -499,11 +499,23 @@ body {
   padding: 8px 12px;
 }
 
-.dl-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
-.dl-value { font-size: 14px; font-weight: 700; font-family: var(--mono); margin-top: 2px; }
-.dl-value.entry  { color: var(--blue); }
-.dl-value.sl     { color: var(--red); }
-.dl-value.target { color: var(--green); }
+.dl-note {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  line-height: 1.5;
+}
+.dl-label  { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.dl-value  { font-size: 14px; font-weight: 700; font-family: var(--mono); margin-top: 2px; }
+.dl-hint   { font-size: 9px; color: var(--text-dim); font-weight: 400; font-family: inherit; margin-left: 6px; }
+.dl-value.entry   { color: var(--blue); }
+.dl-value.sl      { color: var(--red); }
+.dl-value.target  { color: var(--green); }
+.dl-value.target2 { color: #7ecfaa; }
 
 .close-pct-bar {
   display: flex;
