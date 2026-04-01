@@ -223,6 +223,53 @@ async def run_backtest_endpoint(period_days: int = 252):
         raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
 
 
+@app.get("/api/nifty/analysis")
+async def get_nifty_analysis():
+    """
+    Full NIFTY50 options analysis.
+    Fetches live NIFTY data + global sentiment, runs the directional engine
+    and options strategy engine, returns a structured trade plan.
+    """
+    try:
+        from data.fetcher import fetch_nifty_data, fetch_global_data
+        from sentiment.global_sentiment import calculate_global_score
+        from nifty.nifty_analyzer import analyze_nifty
+        from nifty.options_engine import generate_options_analysis
+
+        logger.info("NIFTY analysis: fetching data...")
+        nifty_df     = fetch_nifty_data(period="1y")
+        global_data  = fetch_global_data()
+        global_sent  = calculate_global_score(global_data)
+
+        if nifty_df is None or nifty_df.empty:
+            raise HTTPException(status_code=503, detail="Could not fetch NIFTY50 market data")
+
+        nifty_analysis = analyze_nifty(nifty_df, global_sent)
+        if nifty_analysis.get("status") == "error":
+            raise HTTPException(status_code=503, detail=nifty_analysis.get("error"))
+
+        options_analysis = generate_options_analysis(nifty_analysis, global_sent)
+
+        logger.info("NIFTY analysis complete — expected move: %s", nifty_analysis.get("expected_move"))
+        return {
+            "status":           "success",
+            "run_date":         datetime.now().strftime("%Y-%m-%d"),
+            "run_time":         datetime.now().strftime("%H:%M:%S"),
+            "nifty_overview":   nifty_analysis,
+            "options_analysis": options_analysis,
+            "global_sentiment": {
+                "score":          global_sent.get("score"),
+                "classification": global_sent.get("classification"),
+                "components":     global_sent.get("components", {}),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("NIFTY analysis error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"NIFTY analysis failed: {str(e)}")
+
+
 @app.get("/api/health")
 async def health_check():
     return {

@@ -628,3 +628,489 @@ body {
   .search-wrap input { width: 160px; }
   .detail-grid { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NIFTY OPTIONS PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page tabs in navbar ─────────────────────────────────────────────────── */
+.page-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--bg);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.page-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.page-tab:hover { color: var(--text); background: var(--card-bg2); }
+.page-tab.active { background: var(--card-bg2); color: var(--text); border: 1px solid var(--border2); }
+
+/* ── NIFTY sub-header ────────────────────────────────────────────────────── */
+.nifty-sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--card-bg2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.nifty-sub-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+}
+
+.nifty-sub-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+}
+
+.btn-nifty-run {
+  background: var(--yellow);
+  color: #000;
+  border: none;
+  padding: 9px 20px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.btn-nifty-run:hover  { opacity: 0.88; }
+.btn-nifty-run:active { transform: scale(0.97); }
+.btn-nifty-run:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-nifty-run.loading  { background: var(--blue); color: #fff; }
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.nifty-section { padding: 0 24px; margin-top: 16px; }
+
+.nifty-3col-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.nifty-empty {
+  text-align: center;
+  padding: 80px 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+/* ── Base card ───────────────────────────────────────────────────────────── */
+.nifty-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  height: 100%;
+}
+
+.nifty-card-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.nifty-card-sub {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+/* ── Overview card ───────────────────────────────────────────────────────── */
+.nifty-overview-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.nifty-index-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.nifty-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.nifty-price {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.nifty-change {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+
+.nifty-change.up   { color: var(--green); }
+.nifty-change.down { color: var(--red); }
+.nifty-change.flat { color: var(--text-muted); }
+
+.nifty-move-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nifty-move-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Expected move & direction badges */
+.nifty-move-badge,
+.nifty-dir-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 12px;
+  letter-spacing: 0.4px;
+}
+
+.nifty-move-badge.STRONG_BULLISH,
+.nifty-move-badge.BULLISH,
+.nifty-dir-badge.LONG {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.nifty-move-badge.STRONG_BEARISH,
+.nifty-move-badge.BEARISH,
+.nifty-dir-badge.SHORT {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.nifty-move-badge.NEUTRAL,
+.nifty-dir-badge.NEUTRAL {
+  background: var(--blue-dim);
+  color: var(--blue);
+}
+
+.nifty-ov-right {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+/* ── Chip widget (reusable small stat) ───────────────────────────────────── */
+.nifty-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.nifty-chip-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.nifty-chip-value {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.nifty-chip-value.bullish { color: var(--green); }
+.nifty-chip-value.bearish { color: var(--red); }
+.nifty-chip-value.neutral { color: var(--blue); }
+
+/* ── Technical levels grid ───────────────────────────────────────────────── */
+.nifty-levels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.nifty-level-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 12px;
+}
+
+.nifty-level-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.nifty-level-value {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--mono);
+  margin-top: 2px;
+  color: var(--text);
+}
+
+.nifty-level-value.resistance { color: var(--red); }
+.nifty-level-value.support    { color: var(--green); }
+.nifty-level-value.key        { color: var(--yellow); }
+.nifty-level-value.ma         { color: var(--blue); }
+
+/* ── Strategy card internals ─────────────────────────────────────────────── */
+.nifty-dir-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.nifty-dir-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.nifty-strategy-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+
+.nifty-iv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.nifty-iv-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+}
+
+.nifty-iv-badge.VERY_LOW,
+.nifty-iv-badge.LOW      { background: var(--green-dim); color: var(--green); }
+.nifty-iv-badge.MODERATE { background: var(--yellow-dim); color: var(--yellow); }
+.nifty-iv-badge.HIGH,
+.nifty-iv-badge.VERY_HIGH { background: var(--red-dim); color: var(--red); }
+
+.nifty-rationale {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 4px;
+}
+
+/* ── Mini data grid (strike card, trade plan) ────────────────────────────── */
+.nifty-mini-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nifty-mini-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.nifty-mini-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+.nifty-mini-label { color: var(--text-muted); font-size: 11px; }
+.nifty-mini-value { font-family: var(--mono); font-weight: 700; color: var(--text); }
+
+.nifty-mini-value.entry  { color: var(--blue); }
+.nifty-mini-value.sl     { color: var(--red); }
+.nifty-mini-value.target { color: var(--green); }
+.nifty-mini-value.t2     { color: #7ecfaa; }
+.nifty-mini-value.warn   { color: var(--yellow); }
+.nifty-mini-value.strike { color: var(--yellow); font-size: 14px; }
+
+/* ── Trade plan divider ──────────────────────────────────────────────────── */
+.nifty-trade-grid { display: flex; flex-direction: column; gap: 8px; }
+
+.nifty-trade-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* ── Greeks grid ─────────────────────────────────────────────────────────── */
+.nifty-greeks-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.nifty-greek-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.nifty-greek-symbol {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--blue);
+  display: block;
+  font-family: var(--mono);
+  margin-bottom: 2px;
+}
+
+.nifty-greek-name {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.nifty-greek-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.nifty-greeks-interp {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  line-height: 1.6;
+}
+
+/* ── Explanation list ────────────────────────────────────────────────────── */
+.nifty-explain-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nifty-explain-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.5;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 13px;
+}
+
+.nifty-explain-list li::before {
+  content: "▸";
+  color: var(--green);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Disclaimer ──────────────────────────────────────────────────────────── */
+.nifty-disclaimer {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(255, 215, 0, 0.04);
+  border: 1px solid rgba(255, 215, 0, 0.18);
+  border-radius: 7px;
+  padding: 10px 14px;
+  line-height: 1.6;
+  margin-bottom: 32px;
+}
+
+/* ── Breakout badge (extended for NIFTY status) ──────────────────────────── */
+.bo-badge.BREAKOUT_ABOVE_PDH { background: var(--green-dim); color: var(--green); }
+.bo-badge.BREAKDOWN_BELOW_PDL{ background: var(--red-dim);   color: var(--red); }
+.bo-badge.NEAR_PDH           { background: #00c89633; color: var(--green); }
+.bo-badge.NEAR_PDL           { background: #ff456033; color: var(--red); }
+.bo-badge.INSIDE_RANGE       { background: var(--border); color: var(--text-muted); }
+.bo-badge.20D_BREAKOUT       { background: var(--green-dim); color: var(--green); }
+.bo-badge.20D_BREAKDOWN      { background: var(--red-dim); color: var(--red); }
+
+/* ── Trend badge (extended) ──────────────────────────────────────────────── */
+.trend-badge.STRONG_BULLISH { background: var(--green-dim); color: var(--green); }
+.trend-badge.STRONG_BEARISH { background: var(--red-dim);   color: var(--red); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .nifty-3col-grid  { grid-template-columns: 1fr; }
+  .nifty-greeks-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .nifty-section { padding: 0 12px; }
+  .nifty-sub-header { flex-direction: column; align-items: flex-start; }
+  .page-tabs { display: none; }   /* collapse tabs on very small screens */
+  .nifty-levels-grid { grid-template-columns: repeat(2, 1fr); }
+  .nifty-overview-card { flex-direction: column; }
+}

@@ -462,3 +462,364 @@ style.textContent = `
 .data-row { animation: fadeIn 0.2s ease both; }
 `;
 document.head.appendChild(style);
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NIFTY OPTIONS PAGE
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// ── Page navigation ───────────────────────────────────────────────────────
+let activePage = 'scanner';
+
+function showPage(page) {
+  activePage = page;
+  document.querySelectorAll('.page-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.page === page);
+  });
+
+  const isScanner = page === 'scanner';
+  document.getElementById('scannerPage').style.display = isScanner ? '' : 'none';
+  document.getElementById('niftyPage').style.display   = isScanner ? 'none' : '';
+  document.getElementById('runBtn').style.display      = isScanner ? '' : 'none';
+  document.getElementById('lastRunTime').style.display = isScanner ? '' : 'none';
+}
+
+// ── NIFTY data load & render ──────────────────────────────────────────────
+async function runNiftyAnalysis() {
+  const btn = document.getElementById('niftyRunBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '⏳ Analysing...';
+  showLoader('Fetching NIFTY50 data...');
+
+  const msgs = [
+    'Computing technical indicators...',
+    'Calculating historical volatility...',
+    'Selecting options strategy...',
+    'Running Black-Scholes model...',
+    'Building trade plan...',
+  ];
+  let mi = 0;
+  const msgTimer = setInterval(() => {
+    document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
+  }, 5000);
+
+  try {
+    const res = await fetch(`${API}/api/nifty/analysis`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderNiftyPage(data);
+    showToast('NIFTY analysis complete!', 'success');
+  } catch (e) {
+    showToast(`NIFTY analysis error: ${e.message}`, 'error');
+    console.error(e);
+  } finally {
+    clearInterval(msgTimer);
+    hideLoader();
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = '⚡ Analyse NIFTY';
+  }
+}
+
+// ── Master renderer ───────────────────────────────────────────────────────
+function renderNiftyPage(data) {
+  const ov   = data.nifty_overview   || {};
+  const oa   = data.options_analysis || {};
+  const gs   = data.global_sentiment || {};
+
+  // Show content, hide empty state
+  document.getElementById('niftyEmpty').style.display   = 'none';
+  document.getElementById('niftyContent').style.display = '';
+
+  // Update last-run timestamp
+  const runLabel = (data.run_date && data.run_time)
+    ? `Last: ${data.run_date} ${data.run_time}`
+    : data.run_date || '–';
+  document.getElementById('niftyLastRun').textContent = runLabel;
+
+  renderNiftyOverview(ov, gs);
+  renderNiftyLevels(ov);
+  renderNiftyStrategy(oa);
+  renderNiftyStrikes(oa);
+  renderNiftyTradePlan(oa);
+  renderNiftyGreeks(oa);
+  renderNiftyExplanation(oa);
+}
+
+// ── Section 1: Overview ───────────────────────────────────────────────────
+function renderNiftyOverview(ov, gs) {
+  // Price
+  const price  = ov.current_price ?? 0;
+  const chgPct = ov.change_pct    ?? 0;
+  const chgDir = chgPct > 0.05 ? 'up' : chgPct < -0.05 ? 'down' : 'flat';
+  const chgPfx = chgPct > 0 ? '+' : '';
+
+  document.getElementById('niftyPrice').textContent = '₹' + fmt(price);
+
+  const chgEl = document.getElementById('niftyChange');
+  chgEl.textContent  = `${chgPfx}${chgPct.toFixed(2)}%`;
+  chgEl.className    = `nifty-change ${chgDir}`;
+
+  // Expected move badge
+  const em    = ov.expected_move || 'NEUTRAL';
+  const emEl  = document.getElementById('niftyExpectedMove');
+  emEl.textContent = em.replace('_', ' ');
+  emEl.className   = `nifty-move-badge ${em}`;
+
+  // Overview chips (right side)
+  const chips = [
+    { label: 'Trend',      value: (ov.trend_bias || '–').replace('_', ' '),
+      cls: trendCls(ov.trend_bias) },
+    { label: 'Global',     value: (gs.classification || '–').replace('_', ' '),
+      cls: trendCls(gs.classification) },
+    { label: 'PDH',        value: '₹' + fmt(ov.pdh), cls: 'resistance' },
+    { label: 'PDL',        value: '₹' + fmt(ov.pdl), cls: 'support' },
+    { label: 'ATR',        value: '₹' + fmt(ov.atr), cls: '' },
+    { label: 'HV 30d',    value: (ov.hv_30 ?? '–') + ' %', cls: '' },
+  ];
+
+  document.getElementById('niftyOverviewChips').innerHTML = chips.map(c =>
+    `<div class="nifty-chip">
+       <span class="nifty-chip-label">${c.label}</span>
+       <span class="nifty-chip-value ${c.cls}">${c.value}</span>
+     </div>`
+  ).join('');
+}
+
+function trendCls(bias) {
+  if (!bias) return '';
+  if (bias.includes('BULLISH') || bias === 'LONG') return 'bullish';
+  if (bias.includes('BEARISH') || bias === 'SHORT') return 'bearish';
+  return 'neutral';
+}
+
+// ── Section 2: Technical Levels ───────────────────────────────────────────
+function renderNiftyLevels(ov) {
+  const levels = [
+    { label: 'Prev Close',   value: '₹' + fmt(ov.prev_close),  cls: '' },
+    { label: 'Open',         value: '₹' + fmt(ov.current_open), cls: '' },
+    { label: 'High',         value: '₹' + fmt(ov.current_high), cls: 'resistance' },
+    { label: 'Low',          value: '₹' + fmt(ov.current_low),  cls: 'support' },
+    { label: 'PDH',          value: '₹' + fmt(ov.pdh),          cls: 'resistance' },
+    { label: 'PDL',          value: '₹' + fmt(ov.pdl),          cls: 'support' },
+    { label: 'VWAP (5d)',    value: '₹' + fmt(ov.vwap_5d),      cls: 'key' },
+    { label: 'MA 20',        value: '₹' + fmt(ov.ma20),         cls: 'ma' },
+    { label: 'MA 50',        value: '₹' + fmt(ov.ma50),         cls: 'ma' },
+    { label: 'MA 200',       value: '₹' + fmt(ov.ma200),        cls: 'ma' },
+    { label: 'Support 1',    value: '₹' + fmt(ov.support1),     cls: 'support' },
+    { label: 'Support 2',    value: '₹' + fmt(ov.support2),     cls: 'support' },
+    { label: 'Resist 1',     value: '₹' + fmt(ov.resistance1),  cls: 'resistance' },
+    { label: 'Resist 2',     value: '₹' + fmt(ov.resistance2),  cls: 'resistance' },
+    { label: 'Exp High',     value: '₹' + fmt(ov.expected_high), cls: '' },
+    { label: 'Exp Low',      value: '₹' + fmt(ov.expected_low),  cls: '' },
+  ];
+
+  document.getElementById('niftyLevelsGrid').innerHTML = levels.map(l =>
+    `<div class="nifty-level-item">
+       <div class="nifty-level-label">${l.label}</div>
+       <div class="nifty-level-value ${l.cls}">${l.value}</div>
+     </div>`
+  ).join('');
+}
+
+// ── Section 3a: Strategy card ──────────────────────────────────────────────
+function renderNiftyStrategy(oa) {
+  const strat  = oa.strategy          || {};
+  const ivEnv  = oa.iv_environment    || {};
+  const dir    = strat.direction      || 'NEUTRAL';
+  const ivLv   = ivEnv.iv_level       || 'MODERATE';
+  const code   = strat.code           || 'NO_TRADE';
+
+  // Direction badge
+  const dirEl = document.getElementById('niftyDirection');
+  dirEl.textContent = dir;
+  dirEl.className   = `nifty-dir-badge ${dir}`;
+
+  // Strategy name
+  const nameEl = document.getElementById('niftyStrategyName');
+  nameEl.textContent = strat.name || '–';
+  nameEl.style.color = dir === 'LONG' ? 'var(--green)'
+                     : dir === 'SHORT' ? 'var(--red)'
+                     : 'var(--text-muted)';
+
+  // IV badge
+  const ivEl = document.getElementById('niftyIvLevel');
+  ivEl.textContent = (ivLv + ' IV').replace('_', ' ');
+  ivEl.className   = `nifty-iv-badge ${ivLv}`;
+
+  // Rationale
+  document.getElementById('niftyRationale').textContent = strat.rationale || '–';
+}
+
+// ── Section 3b: Strike & Expiry card ──────────────────────────────────────
+function renderNiftyStrikes(oa) {
+  const ss   = oa.strike_selection || {};
+  const strat = oa.strategy        || {};
+  const code  = strat.code         || 'NO_TRADE';
+  const optT  = ss.option_type     || '–';
+  const hedge = ss.hedge_strike;
+
+  let rows = [
+    { label: 'Spot Price',      value: '₹' + fmt(ss.spot),       cls: '' },
+    { label: 'ATM Strike',      value: fmt0(ss.atm_strike),      cls: 'strike' },
+    { label: 'Buy Strike',      value: `${fmt0(ss.buy_strike)} ${optT}`, cls: 'strike' },
+  ];
+
+  if (hedge && code !== 'NO_TRADE') {
+    rows.push({ label: 'Sell Strike (hedge)', value: `${fmt0(hedge)} ${optT}`, cls: 'warn' });
+  }
+
+  rows = rows.concat([
+    { label: 'Expiry',          value: ss.expiry || '–',          cls: '' },
+    { label: 'DTE',             value: `${ss.dte ?? '–'} days`,   cls: ss.dte <= 2 ? 'warn' : '' },
+    { label: 'Strike Type',     value: ss.strike_type || 'ATM',   cls: '' },
+    { label: 'Lot Size',        value: `${ss.lot_size || 50} units`, cls: '' },
+  ]);
+
+  document.getElementById('niftyStrikeGrid').innerHTML = rows.map(r =>
+    `<div class="nifty-mini-row">
+       <span class="nifty-mini-label">${r.label}</span>
+       <span class="nifty-mini-value ${r.cls}">${r.value}</span>
+     </div>`
+  ).join('');
+}
+
+// ── Section 3c: Trade Plan card ────────────────────────────────────────────
+function renderNiftyTradePlan(oa) {
+  const tp    = oa.trade_plan || {};
+  const strat = oa.strategy   || {};
+  const code  = strat.code    || 'NO_TRADE';
+
+  if (code === 'NO_TRADE' || !tp.entry_premium) {
+    document.getElementById('niftyTradePlan').innerHTML =
+      `<div class="nifty-mini-row"><span class="nifty-mini-label" style="color:var(--text-muted);font-style:italic">
+        No trade recommended — wait for directional confirmation.
+      </span></div>`;
+    return;
+  }
+
+  const rrLabel = tp.risk_reward ? ` · ${tp.risk_reward}:1 R:R` : '';
+  const dir     = strat.direction || 'LONG';
+
+  const premiumRows = [
+    { label: 'Entry Premium',    value: '₹' + fmt(tp.entry_premium),    cls: 'entry' },
+    { label: 'Stop Loss',        value: '₹' + fmt(tp.stop_loss_premium) + ' (−35%)', cls: 'sl' },
+    { label: 'Target 1' + rrLabel, value: '₹' + fmt(tp.target1_premium), cls: 'target' },
+    { label: 'Target 2',         value: '₹' + fmt(tp.target2_premium),  cls: 't2' },
+    { label: 'Max Loss / Lot',   value: '₹' + fmt(tp.max_loss_per_lot), cls: 'sl' },
+  ];
+
+  const indexRows = [
+    { label: dir === 'LONG' ? 'Buy above (Index)' : 'Sell below (Index)',
+      value: '₹' + fmt(tp.index_entry_trigger), cls: 'entry' },
+    { label: 'Index SL',  value: '₹' + fmt(tp.index_stop_loss),  cls: 'sl' },
+    { label: 'Index T1',  value: '₹' + fmt(tp.index_target1),    cls: 'target' },
+    { label: 'Index T2',  value: '₹' + fmt(tp.index_target2),    cls: 't2' },
+  ];
+
+  document.getElementById('niftyTradePlan').innerHTML =
+    `<div class="nifty-trade-section-label">Option Premium Levels</div>` +
+    premiumRows.map(r =>
+      `<div class="nifty-mini-row">
+         <span class="nifty-mini-label">${r.label}</span>
+         <span class="nifty-mini-value ${r.cls}">${r.value}</span>
+       </div>`
+    ).join('') +
+    `<div class="nifty-trade-section-label" style="margin-top:8px">Index Trigger Levels</div>` +
+    indexRows.map(r =>
+      `<div class="nifty-mini-row">
+         <span class="nifty-mini-label">${r.label}</span>
+         <span class="nifty-mini-value ${r.cls}">${r.value}</span>
+       </div>`
+    ).join('');
+}
+
+// ── Section 4: Greeks ─────────────────────────────────────────────────────
+function renderNiftyGreeks(oa) {
+  const gr    = oa.greeks   || {};
+  const ivEnv = oa.iv_environment || {};
+  const strat = oa.strategy || {};
+  const code  = strat.code  || 'NO_TRADE';
+
+  const netPremium = gr.net_premium ?? 0;
+  const netDelta   = gr.net_delta   ?? 0;
+  const netTheta   = gr.net_theta   ?? 0;
+  const buyLeg     = gr.buy_leg     || {};
+  const gamma      = buyLeg.gamma   ?? 0;
+  const iv         = ivEnv.hv_30    ?? 0;
+
+  if (code === 'NO_TRADE') {
+    document.getElementById('niftyGreeksGrid').innerHTML =
+      `<div style="grid-column:1/-1;color:var(--text-muted);font-style:italic;font-size:12px">
+         No position selected — Greeks not applicable.
+       </div>`;
+    document.getElementById('niftyGreeksInterp').textContent = '';
+    return;
+  }
+
+  const boxes = [
+    { symbol: 'Δ', name: 'Delta',   value: fmtGreek(netDelta, 3),  hint: 'Directional sensitivity' },
+    { symbol: 'Θ', name: 'Theta',   value: fmtGreek(netTheta, 2) + '/day', hint: 'Daily time decay' },
+    { symbol: 'σ', name: 'IV (HV proxy)', value: iv.toFixed(1) + ' %', hint: '30-day annualised HV' },
+    { symbol: 'γ', name: 'Gamma',   value: gamma.toFixed(5),        hint: 'Delta sensitivity' },
+  ];
+
+  document.getElementById('niftyGreeksGrid').innerHTML = boxes.map(b =>
+    `<div class="nifty-greek-box">
+       <span class="nifty-greek-symbol">${b.symbol}</span>
+       <span class="nifty-greek-name">${b.name}</span>
+       <span class="nifty-greek-value">${b.value}</span>
+     </div>`
+  ).join('');
+
+  // Interpretation line
+  const optType  = (strat.option_type || '').toUpperCase();
+  const absDelta = Math.abs(netDelta);
+  const absPremium = netPremium;
+  const thetaDay   = Math.abs(netTheta).toFixed(1);
+
+  let interp = '';
+  if (absDelta > 0) {
+    interp += `Δ ${fmtGreek(netDelta, 2)}: position gains/loses ~₹${(absDelta * 50).toFixed(0)} per 1-pt NIFTY move (50-unit lot). `;
+  }
+  if (netTheta !== 0) {
+    interp += `Θ −₹${(Math.abs(netTheta) * 50).toFixed(0)}/day time decay per lot. `;
+  }
+  if (absPremium > 0) {
+    interp += `Estimated net premium: ₹${absPremium.toFixed(0)} (₹${(absPremium * 50).toFixed(0)} per lot).`;
+  }
+
+  document.getElementById('niftyGreeksInterp').textContent = interp || '–';
+}
+
+function fmtGreek(val, dp = 3) {
+  if (val == null || isNaN(val)) return '–';
+  const prefix = val >= 0 ? '+' : '';
+  return prefix + val.toFixed(dp);
+}
+
+function fmt0(val) {
+  if (val == null) return '–';
+  return Number(val).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
+// ── Section 5: Explanation ────────────────────────────────────────────────
+function renderNiftyExplanation(oa) {
+  const reasons = (oa.explanation || []);
+  const ul = document.getElementById('niftyExplanation');
+
+  if (!reasons.length) {
+    ul.innerHTML = '<li>No explanation available.</li>';
+    return;
+  }
+
+  ul.innerHTML = reasons.map(r => `<li>${r}</li>`).join('');
+
+  // Disclaimer
+  const disc = oa.disclaimer;
+  if (disc) document.getElementById('niftyDisclaimer').textContent = '⚠ ' + disc;
+}

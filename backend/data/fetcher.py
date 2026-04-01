@@ -139,3 +139,37 @@ def fetch_global_data() -> dict:
             }
 
     return global_data
+
+
+def fetch_nifty_data(period: str = "1y") -> pd.DataFrame | None:
+    """
+    Fetch NIFTY 50 (^NSEI) OHLCV data.
+    More lenient than fetch_stock_data — volume may be zero for indices.
+    Returns clean DataFrame or None on failure.
+    """
+    try:
+        ticker = yf.Ticker("^NSEI")
+        df = ticker.history(period=period, auto_adjust=True)
+
+        if df is None or df.empty:
+            logger.warning("No data returned for ^NSEI")
+            return None
+
+        df.columns = [c.strip() for c in df.columns]
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        df = df.dropna(subset=["Open", "High", "Low", "Close"])
+
+        if "Volume" not in df.columns:
+            df["Volume"] = 0
+
+        if len(df) < 50:
+            logger.warning(f"Insufficient NIFTY data: {len(df)} rows")
+            return None
+
+        logger.info(f"NIFTY data fetched: {len(df)} days")
+        return df
+
+    except Exception as e:
+        logger.warning(f"Error fetching NIFTY data: {e}")
+        return None
