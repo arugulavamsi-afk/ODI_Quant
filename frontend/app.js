@@ -200,6 +200,14 @@ function renderTable(stocks) {
   }
 
   tbody.innerHTML = stocks.map((s, idx) => buildRow(s, idx)).join('');
+
+  // Re-open any rows that were expanded before the re-render (survives auto-refresh)
+  expandedRows.forEach(rowId => {
+    const dr = document.getElementById(`${rowId}-detail`);
+    const mr = document.getElementById(rowId);
+    if (dr) dr.classList.add('visible');
+    if (mr) mr.classList.add('expanded');
+  });
 }
 
 function buildRow(s, idx) {
