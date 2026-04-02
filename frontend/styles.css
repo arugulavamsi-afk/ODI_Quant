@@ -621,7 +621,20 @@ body {
 
 /* ── RESPONSIVE ─────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .navbar { flex-direction: column; gap: 10px; }
+  .navbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .nav-brand { flex: 1; min-width: 0; }
+  .nav-subtitle { display: none; }
+  .nav-controls { gap: 8px; }
+  .page-tabs {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .page-tab { flex: 1; text-align: center; padding: 8px 10px; }
   .summary-row { padding: 12px 12px; }
   .filter-bar { padding: 0 12px 10px; }
   .table-section { padding: 0 12px 32px; }
