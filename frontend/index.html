@@ -30,6 +30,9 @@
     <button class="page-tab" data-page="intra" onclick="showPage('intra')">
       ⚡ IntraContra
     </button>
+    <button class="page-tab" data-page="bigbag" onclick="showPage('bigbag')">
+      💎 BigBag
+    </button>
   </div>
 
   <div class="nav-controls">
@@ -632,6 +635,369 @@
     </div><!-- /icContent -->
 </div><!-- /intraPage -->
 
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- BIGBAG PAGE                                                            -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div id="bigbagPage" style="display:none">
+
+  <!-- Sub-header -->
+  <div class="bb-sub-header">
+    <div>
+      <span class="bb-sub-title">BigBag <span class="bb-accent">Asymmetric Compounding</span></span>
+      <span class="bb-sub-desc">Win big when right &middot; Lose small when wrong &middot; Let time do the heavy lifting</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="last-run" id="bbLastRun">&ndash;</span>
+      <button class="btn-bb-run" id="bbRunBtn" onclick="runBigBag()">
+        &#128269; Screen Compounders
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Portfolio Architecture ────────────────────────────────────────────── -->
+  <div class="bb-section">
+    <div class="bb-section-title">
+      <span class="bb-phase-badge">Architecture</span>
+      Portfolio Bucket System
+    </div>
+    <div class="bb-arch-grid">
+      <div class="bb-arch-card bb-arch-core">
+        <div class="bb-arch-alloc">50%</div>
+        <div class="bb-arch-bucket">Core Compounders</div>
+        <div class="bb-arch-horizon">5&ndash;10 years</div>
+        <div class="bb-arch-purpose">10x+ candidates &mdash; hold forever. Never sell on volatility.</div>
+      </div>
+      <div class="bb-arch-card bb-arch-tactical">
+        <div class="bb-arch-alloc">30%</div>
+        <div class="bb-arch-bucket">Tactical Multibags</div>
+        <div class="bb-arch-horizon">2&ndash;3 years</div>
+        <div class="bb-arch-purpose">3&ndash;5x in 2&ndash;3 years. Earnings re-rating plays.</div>
+      </div>
+      <div class="bb-arch-card bb-arch-catalyst">
+        <div class="bb-arch-alloc">15%</div>
+        <div class="bb-arch-bucket">Catalyst Trades</div>
+        <div class="bb-arch-horizon">6&ndash;18 months</div>
+        <div class="bb-arch-purpose">Event-driven. Order wins, capacity ramps, turnarounds.</div>
+      </div>
+      <div class="bb-arch-card bb-arch-cash">
+        <div class="bb-arch-alloc">5%</div>
+        <div class="bb-arch-bucket">Cash / Optionality</div>
+        <div class="bb-arch-horizon">Always ready</div>
+        <div class="bb-arch-purpose">Deploy on crashes. Market panic = ATM withdrawals.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EMPIRE Filter ─────────────────────────────────────────────────────── -->
+  <div class="bb-section">
+    <div class="bb-section-title">
+      <span class="bb-phase-badge">EMPIRE</span>
+      Stock Selection Framework &mdash; The 6-Filter Quality Gate
+    </div>
+    <div class="bb-empire-grid">
+      <div class="bb-empire-card">
+        <div class="bb-empire-letter" style="color:#eab308">E</div>
+        <div class="bb-empire-name">Earnings Quality</div>
+        <ul class="bb-empire-list">
+          <li>PAT growing &gt;20% CAGR for 3+ years</li>
+          <li>Operating Cash Flow &ge; Net Profit</li>
+          <li>ROCE &gt; 20%</li>
+          <li>Zero or minimal debt (D/E &lt; 0.3)</li>
+        </ul>
+      </div>
+      <div class="bb-empire-card">
+        <div class="bb-empire-letter" style="color:#22c55e">M</div>
+        <div class="bb-empire-name">Moat Strength</div>
+        <ul class="bb-empire-list">
+          <li>Pricing power (can raise prices?)</li>
+          <li>Brand, switching costs, network effects</li>
+          <li>Consistent or expanding margins over cycles</li>
+        </ul>
+      </div>
+      <div class="bb-empire-card">
+        <div class="bb-empire-letter" style="color:#4a9eff">P</div>
+        <div class="bb-empire-name">Promoter Integrity</div>
+        <ul class="bb-empire-list">
+          <li>Promoter holding &gt;50% and increasing</li>
+          <li>Zero pledging (red flag if &gt;10%)</li>
+          <li>Good capital allocation history</li>
+        </ul>
+      </div>
+      <div class="bb-empire-card">
+        <div class="bb-empire-letter" style="color:#a855f7">I</div>
+        <div class="bb-empire-name">Industry Tailwind</div>
+        <ul class="bb-empire-list">
+          <li>Riding a decade-long structural theme</li>
+          <li>Capex, Premiumization, Financialization</li>
+          <li>Digital, Defence, PLI beneficiaries</li>
+        </ul>
+      </div>
+      <div class="bb-empire-card">
+        <div class="bb-empire-letter" style="color:#f97316">R</div>
+        <div class="bb-empire-name">Runway (TAM)</div>
+        <ul class="bb-empire-list">
+          <li>Can 5x revenue in 10 years?</li>
+          <li>Underpenetrated sector preferred</li>
+          <li>Insurance, Wealth, QSR, Hospitals</li>
+        </ul>
+      </div>
+      <div class="bb-empire-card">
+        <div class="bb-empire-letter" style="color:#ec4899">E</div>
+        <div class="bb-empire-name">Entry Price</div>
+        <ul class="bb-empire-list">
+          <li>PEG ratio &lt; 1.5 ideal for growth</li>
+          <li>Buy on 20&ndash;30% corrections in quality</li>
+          <li>Reasonable &mdash; not necessarily cheap</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Timeframe Tactics ─────────────────────────────────────────────────── -->
+  <div class="bb-section">
+    <div class="bb-section-title">
+      <span class="bb-phase-badge">Timeframes</span>
+      Horizon-Specific Strategy Playbook
+    </div>
+    <div class="bb-tf-grid">
+      <div class="bb-tf-card bb-tf-1y">
+        <div class="bb-tf-header">
+          <span class="bb-tf-horizon">1-Year</span>
+          <span class="bb-tf-target">40&ndash;60% abs. return</span>
+        </div>
+        <div class="bb-tf-title">Catalyst Capture</div>
+        <div class="bb-tf-body">
+          <p>Pre-event setups: order wins, capacity ramp-ups, turnarounds, index inclusion.</p>
+          <p><strong>Sectors:</strong> PSU Capex, Specialty Chemicals, Defence.</p>
+          <p><strong>Key tool:</strong> 52W breakouts on high volume in fundamentally sound stocks.</p>
+          <p><em>Avoid value traps. Momentum + fundamentals combo only.</em></p>
+        </div>
+      </div>
+      <div class="bb-tf-card bb-tf-2y">
+        <div class="bb-tf-header">
+          <span class="bb-tf-horizon">2-Year</span>
+          <span class="bb-tf-target">2&ndash;3x returns</span>
+        </div>
+        <div class="bb-tf-title">Earnings Re-rating</div>
+        <div class="bb-tf-body">
+          <p>Buy where earnings are about to inflect &mdash; capex cycle complete, debt repaid, new launch.</p>
+          <p><strong>Setup:</strong> 15% grower re-rates to 25%+ &rarr; PE expansion + EPS growth = massive return.</p>
+          <p><strong>Sectors:</strong> Hospitals, Specialty Finance, Auto Ancil., Capital Goods.</p>
+        </div>
+      </div>
+      <div class="bb-tf-card bb-tf-5y">
+        <div class="bb-tf-header">
+          <span class="bb-tf-horizon">5-Year</span>
+          <span class="bb-tf-target">5&ndash;8x returns</span>
+        </div>
+        <div class="bb-tf-title">Structural Compounders</div>
+        <div class="bb-tf-body">
+          <p>India&rsquo;s per capita income doubling plays. Find the Titan, Bajaj Finance, Pidilite of the next decade.</p>
+          <p><strong>Checklist:</strong> 20%+ ROE, low debt, expanding distribution, brand building.</p>
+          <p><strong>Sectors:</strong> Consumer Disc., Private Banks, AMCs, Insurance, IT Products.</p>
+        </div>
+      </div>
+      <div class="bb-tf-card bb-tf-10y">
+        <div class="bb-tf-header">
+          <span class="bb-tf-horizon">10-Year</span>
+          <span class="bb-tf-target">10&ndash;30x returns</span>
+        </div>
+        <div class="bb-tf-title">Civilizational Bets</div>
+        <div class="bb-tf-body">
+          <p>Bet on India&rsquo;s megatrends. Not companies &mdash; themes. Then find the best-positioned operator.</p>
+          <p><strong>Themes:</strong> Energy Transition, Healthcare Infra, Financial Inclusion, Defence indigenization.</p>
+          <p><em>Buy and review annually. Add on dips. Never sell a compounder for short-term noise.</em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EMPIRE Quality Screener ───────────────────────────────────────────── -->
+  <div class="bb-section">
+    <div class="bb-section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span><span class="bb-phase-badge">Screener</span> EMPIRE Quality Screen &mdash; ~50 Curated Compounders</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="bbFilterTabs">
+        <button class="bb-tab active" data-bf="ALL"       onclick="setBbFilter(this,'ALL')">All</button>
+        <button class="bb-tab" data-bf="TIER_1"           onclick="setBbFilter(this,'TIER_1')">&#127381; Tier 1</button>
+        <button class="bb-tab" data-bf="TIER_2"           onclick="setBbFilter(this,'TIER_2')">&#128998; Tier 2</button>
+        <button class="bb-tab" data-bf="HIGH_ROE"         onclick="setBbFilter(this,'HIGH_ROE')">ROE &ge;20%</button>
+        <button class="bb-tab" data-bf="LOW_DEBT"         onclick="setBbFilter(this,'LOW_DEBT')">Low Debt</button>
+        <button class="bb-tab" data-bf="GOOD_PEG"         onclick="setBbFilter(this,'GOOD_PEG')">PEG &lt;1.5</button>
+        <button class="bb-tab" data-bf="NEAR_52WH"        onclick="setBbFilter(this,'NEAR_52WH')">Near 52W High</button>
+      </div>
+    </div>
+
+    <!-- Empty / loading state -->
+    <div id="bbEmpty" class="bb-empty">
+      <div style="font-size:48px;margin-bottom:12px">&#128269;</div>
+      <p>Click <strong>Screen Compounders</strong> to run the EMPIRE quality scan.</p>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:6px">
+        Fetches fundamental data (ROE, D/E, EPS growth, margins, PEG) for ~50 quality NSE stocks. Runtime ~30&ndash;60 s.
+      </p>
+    </div>
+
+    <!-- Results -->
+    <div id="bbResults" style="display:none">
+      <div class="bb-chips" id="bbChips"><!-- JS --></div>
+      <div class="bb-table-wrap">
+        <table class="bb-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th onclick="sortBb('symbol')">Symbol &#8597;</th>
+              <th>Sector / Theme</th>
+              <th onclick="sortBb('market_cap_cr')">Mkt Cap &#8597;</th>
+              <th onclick="sortBb('cmp')">CMP &#8597;</th>
+              <th onclick="sortBb('dist_52wh')">52W High &#8597;</th>
+              <th onclick="sortBb('roe')">ROE% &#8597;</th>
+              <th onclick="sortBb('de_ratio')">D/E &#8597;</th>
+              <th onclick="sortBb('eps_growth')">EPS Gr% &#8597;</th>
+              <th onclick="sortBb('pe')">P/E &#8597;</th>
+              <th onclick="sortBb('peg')">PEG &#8597;</th>
+              <th onclick="sortBb('empire_score')">EMPIRE &#8597;</th>
+              <th>Conviction</th>
+            </tr>
+          </thead>
+          <tbody id="bbTableBody"><!-- JS --></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Position Sizing ───────────────────────────────────────────────────── -->
+  <div class="bb-section">
+    <div class="bb-section-title">
+      <span class="bb-phase-badge">Sizing</span>
+      Championship Position Sizing Rules
+    </div>
+    <div class="bb-sizing-grid">
+
+      <!-- Tier rules -->
+      <div class="bb-card">
+        <div class="bb-card-title">Conviction Tiers</div>
+        <div class="bb-tier-list">
+          <div class="bb-tier-row">
+            <div class="bb-tier-badge" style="background:#eab30822;color:#eab308;border-color:#eab30844">Tier 1</div>
+            <div class="bb-tier-detail">
+              <strong>8&ndash;12% per position</strong>
+              <span>Max 5 stocks &mdash; highest conviction</span>
+            </div>
+          </div>
+          <div class="bb-tier-row">
+            <div class="bb-tier-badge" style="background:#4a9eff22;color:#4a9eff;border-color:#4a9eff44">Tier 2</div>
+            <div class="bb-tier-detail">
+              <strong>4&ndash;6% per position</strong>
+              <span>Max 8 stocks &mdash; good quality, building conviction</span>
+            </div>
+          </div>
+          <div class="bb-tier-row">
+            <div class="bb-tier-badge" style="background:#88888822;color:#888;border-color:#88888844">Watchlist</div>
+            <div class="bb-tier-detail">
+              <strong>2&ndash;3% per position</strong>
+              <span>Trial / monitoring position</span>
+            </div>
+          </div>
+        </div>
+        <div class="bb-rule-note">
+          Max single stock: <strong>12%</strong> (non-negotiable)<br>
+          Max sector: <strong>25%</strong> &mdash; never average down on a broken thesis
+        </div>
+      </div>
+
+      <!-- Position calculator -->
+      <div class="bb-card">
+        <div class="bb-card-title">Position Size Calculator</div>
+        <div class="bb-calc-fields">
+          <div class="bb-field"><label>Portfolio Value (&#8377;)</label>
+            <input type="number" id="bbCapital" value="2000000" oninput="calcBbPosition()"/></div>
+          <div class="bb-field"><label>Entry Price (&#8377;)</label>
+            <input type="number" id="bbEntry" placeholder="e.g. 2400" oninput="calcBbPosition()"/></div>
+          <div class="bb-field"><label>Conviction Tier</label>
+            <select id="bbTier" onchange="calcBbPosition()" class="bb-select">
+              <option value="10">Tier 1 &mdash; 10% (mid-range)</option>
+              <option value="5">Tier 2 &mdash; 5% (mid-range)</option>
+              <option value="2.5">Watchlist &mdash; 2.5%</option>
+            </select>
+          </div>
+          <div class="bb-field"><label>SL% below entry</label>
+            <input type="number" id="bbSlPct" value="20" step="1" min="5" max="50" placeholder="e.g. 20" oninput="calcBbPosition()"/></div>
+        </div>
+        <div id="bbCalcOut" class="bb-calc-out">
+          <p style="color:var(--text-dim);font-size:12px">Fill Entry and Tier to calculate.</p>
+        </div>
+      </div>
+
+      <!-- Risk rules -->
+      <div class="bb-card">
+        <div class="bb-card-title">Risk Rules I Never Break &#128737;</div>
+        <div class="bb-risk-list">
+          <div class="bb-risk-row"><span class="bb-risk-icon gold">&#9650;</span><span>Sell when the <strong>story breaks</strong>, not when stock falls</span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon green">&#10003;</span><span>No stop-losses on core holdings &mdash; volatility is not risk</span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon blue">&#8594;</span><span>Trail stop on tactical trades after <strong>50%+ move</strong></span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon blue">&#8594;</span><span>Quarterly review: earnings intact? Promoter behavior okay?</span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon red">!</span><span>Never use leverage in the equity bucket</span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon red">!</span><span>Max 35% portfolio drawdown before macro reassessment</span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon gold">&#9650;</span><span>Buy in <strong>3 tranches minimum</strong> &mdash; never deploy full size at once</span></div>
+          <div class="bb-risk-row"><span class="bb-risk-icon green">&#10003;</span><span>SIP into best ideas &mdash; add systematically, don&rsquo;t time perfectly</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── High-Conviction Themes ────────────────────────────────────────────── -->
+  <div class="bb-section">
+    <div class="bb-section-title">
+      <span class="bb-phase-badge">Themes</span>
+      High-Conviction India Themes 2024&ndash;2034
+    </div>
+    <div class="bb-themes-grid">
+      <div class="bb-theme-card" style="border-left-color:#eab308">
+        <div class="bb-theme-name">&#9992; Defence &amp; Aerospace</div>
+        <div class="bb-theme-why">Indigenization mandate, massive order books, government push</div>
+        <div class="bb-theme-horizon">5&ndash;10 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#22c55e">
+        <div class="bb-theme-name">&#127973; Hospitals &amp; Diagnostics</div>
+        <div class="bb-theme-why">Under-doctored nation, premiumization of healthcare</div>
+        <div class="bb-theme-horizon">5&ndash;10 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#4a9eff">
+        <div class="bb-theme-name">&#127981; Capital Goods / EPC</div>
+        <div class="bb-theme-why">India&rsquo;s $2T infrastructure push, PLI manufacturing</div>
+        <div class="bb-theme-horizon">2&ndash;5 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#a855f7">
+        <div class="bb-theme-name">&#9879; Specialty Chemicals</div>
+        <div class="bb-theme-why">China+1 realignment, import substitution opportunity</div>
+        <div class="bb-theme-horizon">3&ndash;7 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#f97316">
+        <div class="bb-theme-name">&#128200; AMC / Wealth Management</div>
+        <div class="bb-theme-why">Financialization of savings, SIP culture, rising affluence</div>
+        <div class="bb-theme-horizon">5&ndash;10 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#ec4899">
+        <div class="bb-theme-name">&#127828; QSR / Consumer Discretionary</div>
+        <div class="bb-theme-why">Rising middle class, brand preference shift, aspirational spending</div>
+        <div class="bb-theme-horizon">5&ndash;10 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#14b8a6">
+        <div class="bb-theme-name">&#9889; Renewable Energy Supply Chain</div>
+        <div class="bb-theme-why">India&rsquo;s energy transition, 500 GW target by 2030</div>
+        <div class="bb-theme-horizon">5&ndash;10 yr</div>
+      </div>
+      <div class="bb-theme-card" style="border-left-color:#6366f1">
+        <div class="bb-theme-name">&#128666; Logistics &amp; Warehousing</div>
+        <div class="bb-theme-why">GST-driven formalization, e-commerce supply chain boom</div>
+        <div class="bb-theme-horizon">3&ndash;5 yr</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /bigbagPage -->
 
 <!-- ── LOADER OVERLAY ──────────────────────────────────────────────────── -->
 <div class="loader-overlay" id="loaderOverlay" style="display:none">

@@ -491,6 +491,7 @@ function showPage(page) {
   document.getElementById('niftyPage').style.display    = page === 'nifty'    ? '' : 'none';
   document.getElementById('strategyPage').style.display = isStrategy          ? '' : 'none';
   document.getElementById('intraPage').style.display    = page === 'intra'    ? '' : 'none';
+  document.getElementById('bigbagPage').style.display   = page === 'bigbag'   ? '' : 'none';
   document.getElementById('runBtn').style.display       = isScanner  ? '' : 'none';
   document.getElementById('lastRunTime').style.display  = isScanner  ? '' : 'none';
 }
@@ -1739,6 +1740,338 @@ function calcIcPosition() {
     <div class="ic-calc-row"><span>Breakeven (at +1R)</span><strong>₹${entry.toFixed(2)}</strong></div>
     <div class="ic-calc-row" style="font-size:10px;color:var(--text-dim);margin-top:4px">
       <span>Max 3 positions → heat</span><strong>${(riskTier * 3).toFixed(1)}%</strong>
+    </div>
+  `;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BIGBAG — Asymmetric Compounding Quality Screen
+// ══════════════════════════════════════════════════════════════════════════════
+
+let bbStocks   = [];
+let bbFilter   = 'ALL';
+let bbSortKey  = 'empire_score';
+let bbSortAsc  = false;
+let bbExpanded = new Set();
+
+// ── Fetch ─────────────────────────────────────────────────────────────────
+async function runBigBag() {
+  const btn = document.getElementById('bbRunBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '\u23f3 Screening\u2026';
+  showLoader('Fetching fundamental data\u2026');
+
+  const msgs = [
+    'Fetching ROE & earnings growth\u2026',
+    'Computing D/E ratios\u2026',
+    'Scoring operating margins\u2026',
+    'Calculating PEG ratios\u2026',
+    'Running EMPIRE scoring\u2026',
+    'Ranking quality compounders\u2026',
+    'Assigning conviction tiers\u2026',
+  ];
+  let mi = 0;
+  const t = setInterval(() => {
+    document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
+  }, 7000);
+
+  try {
+    const res = await fetch(`${API}/api/strategy/bigbag`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderBigBag(data);
+    showToast('BigBag screen complete!', 'success');
+  } catch (e) {
+    showToast(`BigBag error: ${e.message}`, 'error');
+    console.error(e);
+  } finally {
+    clearInterval(t);
+    hideLoader();
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = '\u2728 Screen Compounders';
+  }
+}
+
+// ── Master renderer ───────────────────────────────────────────────────────
+function renderBigBag(data) {
+  document.getElementById('bbEmpty').style.display   = 'none';
+  document.getElementById('bbResults').style.display = '';
+
+  const ts = data.run_date && data.run_time
+    ? `Last: ${data.run_date} ${data.run_time}` : (data.run_date || '\u2013');
+  document.getElementById('bbLastRun').textContent = ts;
+
+  bbStocks = data.stocks || [];
+  renderBbChips(data.summary || {});
+  applyBbFilters();
+}
+
+// ── Summary chips ─────────────────────────────────────────────────────────
+function renderBbChips(s) {
+  document.getElementById('bbChips').innerHTML = `
+    <div class="bb-chip bb-chip-gold"><span class="bb-chip-num">${s.total ?? 0}</span><span class="bb-chip-lbl">Screened</span></div>
+    <div class="bb-chip bb-chip-gold"><span class="bb-chip-num">${s.tier1 ?? 0}</span><span class="bb-chip-lbl">Tier 1</span></div>
+    <div class="bb-chip bb-chip-blue"><span class="bb-chip-num">${s.tier2 ?? 0}</span><span class="bb-chip-lbl">Tier 2</span></div>
+    <div class="bb-chip bb-chip-green"><span class="bb-chip-num">${s.high_roe ?? 0}</span><span class="bb-chip-lbl">ROE &ge;20%</span></div>
+    <div class="bb-chip bb-chip-green"><span class="bb-chip-num">${s.low_de ?? 0}</span><span class="bb-chip-lbl">Low Debt</span></div>
+    <div class="bb-chip bb-chip-blue"><span class="bb-chip-num">${s.good_peg ?? 0}</span><span class="bb-chip-lbl">PEG &lt;1.5</span></div>
+    <div class="bb-chip bb-chip-gold"><span class="bb-chip-num">${s.near_52wh ?? 0}</span><span class="bb-chip-lbl">Near 52W High</span></div>
+  `;
+}
+
+// ── Filters + Sort ────────────────────────────────────────────────────────
+function setBbFilter(el, f) {
+  document.querySelectorAll('.bb-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  bbFilter = f;
+  applyBbFilters();
+}
+
+function sortBb(key) {
+  if (bbSortKey === key) bbSortAsc = !bbSortAsc;
+  else { bbSortKey = key; bbSortAsc = key === 'symbol'; }
+  applyBbFilters();
+}
+
+function applyBbFilters() {
+  let f = [...bbStocks];
+  if (bbFilter === 'TIER_1') {
+    f = f.filter(s => s.conviction === 'TIER_1');
+  } else if (bbFilter === 'TIER_2') {
+    f = f.filter(s => s.conviction === 'TIER_2');
+  } else if (bbFilter === 'HIGH_ROE') {
+    f = f.filter(s => s.roe != null && s.roe >= 20);
+  } else if (bbFilter === 'LOW_DEBT') {
+    f = f.filter(s => !s.is_financial && s.de_ratio != null && s.de_ratio < 0.3);
+  } else if (bbFilter === 'GOOD_PEG') {
+    f = f.filter(s => s.peg != null && s.peg < 1.5);
+  } else if (bbFilter === 'NEAR_52WH') {
+    f = f.filter(s => s.dist_52wh != null && s.dist_52wh >= -10);
+  }
+  f.sort((a, b) => {
+    let va = a[bbSortKey], vb = b[bbSortKey];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return bbSortAsc ? (va < vb ? -1 : va > vb ? 1 : 0)
+                     : (va > vb ? -1 : va < vb ? 1 : 0);
+  });
+  renderBbTable(f);
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────
+function renderBbTable(stocks) {
+  const tbody = document.getElementById('bbTableBody');
+  if (!stocks.length) {
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted)">No stocks match this filter.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = stocks.map(s => buildBbRow(s)).join('');
+  bbExpanded.forEach(id => {
+    const dr = document.getElementById(`bb-det-${id}`);
+    const mr = document.getElementById(`bb-row-${id}`);
+    if (dr) dr.style.display = '';
+    if (mr) mr.classList.add('expanded');
+  });
+}
+
+function buildBbRow(s) {
+  const id    = s.symbol.replace(/[^a-zA-Z0-9]/g, '_');
+  const rowId = `bb-row-${id}`;
+  const detId = `bb-det-${id}`;
+
+  // Market cap
+  const mcHtml = s.market_cap_cr
+    ? (s.market_cap_cr >= 100000
+        ? `<span style="color:var(--text-muted)">${(s.market_cap_cr/100000).toFixed(1)}L Cr</span>`
+        : s.market_cap_cr >= 1000
+          ? `<span style="color:var(--text-muted)">${(s.market_cap_cr/1000).toFixed(1)}K Cr</span>`
+          : `<span style="color:var(--text-muted)">${s.market_cap_cr} Cr</span>`)
+    : '\u2013';
+
+  // 52W High
+  const d52Col = s.dist_52wh != null
+    ? (s.dist_52wh >= -5 ? 'var(--green)' : s.dist_52wh >= -15 ? '#eab308' : 'var(--text-muted)')
+    : 'var(--text-dim)';
+  const d52Html = s.dist_52wh != null
+    ? `<span style="color:${d52Col};font-family:var(--mono)">${s.dist_52wh.toFixed(1)}%</span>`
+    : '\u2013';
+
+  // ROE
+  const roeCol = s.roe != null
+    ? (s.roe >= 25 ? 'var(--green)' : s.roe >= 20 ? '#eab308' : 'var(--text-muted)')
+    : 'var(--text-dim)';
+
+  // D/E
+  const deCol = s.is_financial ? 'var(--text-dim)'
+    : s.de_ratio != null
+      ? (s.de_ratio < 0.1 ? 'var(--green)' : s.de_ratio < 0.3 ? '#eab308' : 'var(--red)')
+      : 'var(--text-dim)';
+  const deHtml = s.is_financial
+    ? `<span style="color:var(--text-dim);font-size:10px">n/a (fin)</span>`
+    : s.de_ratio != null
+      ? `<span style="color:${deCol};font-family:var(--mono)">${s.de_ratio.toFixed(2)}</span>`
+      : '\u2013';
+
+  // EPS growth
+  const egCol = s.eps_growth != null
+    ? (s.eps_growth >= 20 ? 'var(--green)' : s.eps_growth >= 10 ? '#eab308' : s.eps_growth < 0 ? 'var(--red)' : 'var(--text-muted)')
+    : 'var(--text-dim)';
+
+  // P/E
+  const peCol = s.pe != null
+    ? (s.pe < 25 ? 'var(--green)' : s.pe < 40 ? '#eab308' : 'var(--text-muted)')
+    : 'var(--text-dim)';
+
+  // PEG
+  const pegCol = s.peg != null
+    ? (s.peg < 1.0 ? 'var(--green)' : s.peg < 1.5 ? '#eab308' : s.peg < 2 ? 'var(--text-muted)' : 'var(--red)')
+    : 'var(--text-dim)';
+
+  // EMPIRE score bar
+  const scoreCol = s.empire_score >= 70 ? '#eab308' : s.empire_score >= 50 ? '#4a9eff' : 'var(--text-muted)';
+  const scoreHtml = `
+    <div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1;background:var(--border);border-radius:3px;height:6px;min-width:40px">
+        <div style="width:${Math.min(s.empire_score,100)}%;height:100%;background:${scoreCol};border-radius:3px"></div>
+      </div>
+      <span style="font-family:var(--mono);color:${scoreCol};font-size:11px;white-space:nowrap">${s.empire_score.toFixed(0)}</span>
+    </div>`;
+
+  // Conviction
+  const convHtml = `<span style="background:${s.conviction_color}22;color:${s.conviction_color};border:1px solid ${s.conviction_color}44;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;white-space:nowrap">${s.conviction_label}</span>`;
+
+  return `
+    <tr id="${rowId}" class="bb-stock-row ${s.conviction === 'TIER_1' ? 'bb-tier1-row' : ''}" onclick="toggleBbRow('${id}')">
+      <td class="bb-expand">${bbExpanded.has(id) ? '\u25bc' : '\u25b6'}</td>
+      <td><strong>${s.symbol}</strong><br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
+      <td>
+        <span style="color:var(--text-muted)">${s.sector}</span><br>
+        <span style="font-size:10px;color:var(--text-dim)">${s.theme}</span>
+      </td>
+      <td>${mcHtml}</td>
+      <td style="font-family:var(--mono)">${s.cmp ? '\u20b9' + fmt(s.cmp) : '\u2013'}</td>
+      <td>${d52Html}</td>
+      <td style="color:${roeCol};font-family:var(--mono)">${s.roe != null ? s.roe.toFixed(1) + '%' : '\u2013'}</td>
+      <td>${deHtml}</td>
+      <td style="color:${egCol};font-family:var(--mono)">${s.eps_growth != null ? (s.eps_growth >= 0 ? '+' : '') + s.eps_growth.toFixed(1) + '%' : '\u2013'}</td>
+      <td style="color:${peCol};font-family:var(--mono)">${s.pe != null ? s.pe.toFixed(1) : '\u2013'}</td>
+      <td style="color:${pegCol};font-family:var(--mono)">${s.peg != null ? s.peg.toFixed(2) : '\u2013'}</td>
+      <td style="min-width:120px">${scoreHtml}</td>
+      <td>${convHtml}</td>
+    </tr>
+    <tr id="${detId}" class="bb-detail-row" style="display:none">
+      <td colspan="13" class="bb-detail-cell">${buildBbDetail(s)}</td>
+    </tr>
+  `;
+}
+
+function buildBbDetail(s) {
+  // Key metrics panel
+  const metricsHtml = `
+    <div class="bb-det-metrics">
+      <div class="bb-det-row"><span>CMP</span><strong style="font-family:var(--mono)">\u20b9${fmt(s.cmp)}</strong></div>
+      <div class="bb-det-row"><span>Market Cap</span><strong style="font-family:var(--mono)">${s.market_cap_cr ? (s.market_cap_cr >= 1000 ? (s.market_cap_cr/1000).toFixed(1) + 'K Cr' : s.market_cap_cr + ' Cr') : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>52W High</span><strong style="font-family:var(--mono)">\u20b9${fmt(s.w52h)}</strong></div>
+      <div class="bb-det-row"><span>52W Low</span><strong style="font-family:var(--mono)">\u20b9${fmt(s.w52l)}</strong></div>
+      <div class="bb-det-row"><span>ROE</span><strong style="font-family:var(--mono)">${s.roe != null ? s.roe.toFixed(1) + '%' : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>D/E Ratio</span><strong style="font-family:var(--mono)">${s.is_financial ? 'N/A (fin)' : s.de_ratio != null ? s.de_ratio.toFixed(2) : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>P/E</span><strong style="font-family:var(--mono)">${s.pe != null ? s.pe.toFixed(1) : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>P/B</span><strong style="font-family:var(--mono)">${s.pb != null ? s.pb.toFixed(1) : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>PEG</span><strong style="font-family:var(--mono)">${s.peg != null ? s.peg.toFixed(2) : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>EPS Growth</span><strong style="font-family:var(--mono)">${s.eps_growth != null ? (s.eps_growth >= 0 ? '+' : '') + s.eps_growth.toFixed(1) + '%' : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>Rev Growth</span><strong style="font-family:var(--mono)">${s.rev_growth != null ? (s.rev_growth >= 0 ? '+' : '') + s.rev_growth.toFixed(1) + '%' : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>Op. Margin</span><strong style="font-family:var(--mono)">${s.op_margin != null ? s.op_margin.toFixed(1) + '%' : '\u2013'}</strong></div>
+      <div class="bb-det-row"><span>Net Margin</span><strong style="font-family:var(--mono)">${s.net_margin != null ? s.net_margin.toFixed(1) + '%' : '\u2013'}</strong></div>
+    </div>`;
+
+  // EMPIRE breakdown
+  const bd = s.empire_breakdown || {};
+  const letters = { roe: 'E', eps_growth: 'E', op_margin: 'M', rev_growth: 'P', de_ratio: 'R', peg: 'E' };
+  const bdHtml = Object.entries(bd).map(([k, v]) => {
+    const pct = v.max > 0 ? (v.score / v.max * 100) : 0;
+    const col = pct >= 75 ? 'var(--green)' : pct >= 40 ? '#eab308' : 'var(--red)';
+    return `
+      <div class="bb-empire-score-row">
+        <span class="bb-empire-score-letter" style="color:${col}">${letters[k] || 'E'}</span>
+        <span class="bb-empire-score-label">${v.label}</span>
+        <span class="bb-empire-score-val" style="font-family:var(--mono)">${v.value != null ? v.value.toFixed(1) + (k.includes('margin') || k.includes('growth') || k === 'roe' ? '%' : '') : '\u2013'}</span>
+        <div class="bb-empire-score-bar">
+          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px"></div>
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:${col};min-width:28px;text-align:right">${v.score}/${v.max}</span>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="bb-detail-wrap">
+      ${metricsHtml}
+      <div class="bb-empire-scorecard">
+        <div class="bb-empire-sc-title">
+          EMPIRE Score: <strong style="color:${s.empire_score >= 70 ? '#eab308' : s.empire_score >= 50 ? '#4a9eff' : 'var(--text-muted)'}">${s.empire_score.toFixed(0)} / 100</strong>
+          &nbsp;<span style="color:${s.conviction_color};font-size:11px">${s.conviction_label}</span>
+        </div>
+        ${bdHtml || '<p style="color:var(--text-dim);font-size:11px;padding:8px">Limited fundamental data available for this stock.</p>'}
+      </div>
+    </div>`;
+}
+
+function toggleBbRow(id) {
+  const det = document.getElementById(`bb-det-${id}`);
+  const row = document.getElementById(`bb-row-${id}`);
+  if (!det) return;
+  const open = det.style.display !== 'none';
+  det.style.display = open ? 'none' : '';
+  row.classList.toggle('expanded', !open);
+  if (open) bbExpanded.delete(id); else bbExpanded.add(id);
+  const btn = row.querySelector('.bb-expand');
+  if (btn) btn.textContent = open ? '\u25b6' : '\u25bc';
+}
+
+// ── Position Size Calculator (BigBag) ────────────────────────────────────
+function calcBbPosition() {
+  const capital = parseFloat(document.getElementById('bbCapital').value) || 0;
+  const entry   = parseFloat(document.getElementById('bbEntry').value)   || 0;
+  const tierPct = parseFloat(document.getElementById('bbTier').value)    || 10;
+  const slPct   = parseFloat(document.getElementById('bbSlPct').value)   || 20;
+  const el      = document.getElementById('bbCalcOut');
+
+  if (!capital || !entry) {
+    el.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Enter Portfolio Value and Entry Price.</p>';
+    return;
+  }
+
+  const positionVal = capital * (tierPct / 100);
+  const shares      = Math.floor(positionVal / entry);
+  const posVal      = shares * entry;
+  const sl          = entry * (1 - slPct / 100);
+  const riskPerShare= entry - sl;
+  const maxRisk     = shares * riskPerShare;
+  const maxRiskPct  = (maxRisk / capital * 100).toFixed(1);
+  // Tranche sizes (3 tranches)
+  const t1shares    = Math.floor(shares * 0.4);
+  const t2shares    = Math.floor(shares * 0.3);
+  const t3shares    = shares - t1shares - t2shares;
+
+  el.innerHTML = `
+    <div class="bb-calc-row"><span>Position Allocation</span><strong style="color:#eab308">${tierPct}% = \u20b9${posVal.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
+    <div class="bb-calc-row"><span>Total Shares</span><strong>${shares.toLocaleString('en-IN')}</strong></div>
+    <div class="bb-calc-row"><span>Stop Loss (${slPct}% below)</span><strong style="color:var(--red)">\u20b9${sl.toFixed(2)}</strong></div>
+    <div class="bb-calc-row"><span>Max Risk if SL hit</span><strong style="color:var(--red)">\u20b9${maxRisk.toLocaleString('en-IN',{maximumFractionDigits:0})} (${maxRiskPct}%)</strong></div>
+    <hr style="border-color:var(--border);margin:8px 0">
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">3-Tranche Buying Plan:</div>
+    <div class="bb-calc-row"><span>Tranche 1 (40%) &mdash; at CMP</span><strong>${t1shares} shares @ \u20b9${entry.toFixed(2)}</strong></div>
+    <div class="bb-calc-row"><span>Tranche 2 (30%) &mdash; on &minus;10% dip</span><strong>${t2shares} shares @ \u20b9${(entry * 0.90).toFixed(2)}</strong></div>
+    <div class="bb-calc-row"><span>Tranche 3 (30%) &mdash; on &minus;20% dip</span><strong>${t3shares} shares @ \u20b9${(entry * 0.80).toFixed(2)}</strong></div>
+    <div class="bb-calc-row" style="font-size:10px;color:var(--text-dim);margin-top:4px">
+      <span>Avg cost after all tranches</span><strong>\u20b9${((t1shares*entry + t2shares*entry*0.90 + t3shares*entry*0.80)/shares).toFixed(2)}</strong>
     </div>
   `;
 }

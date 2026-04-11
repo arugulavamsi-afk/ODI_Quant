@@ -322,6 +322,33 @@ async def get_trend_pullback_strategy():
         raise HTTPException(status_code=500, detail=f"Strategy failed: {str(e)}")
 
 
+@app.get("/api/strategy/bigbag")
+async def get_bigbag():
+    """
+    BigBag — Asymmetric Compounding Quality Screen.
+    Screens ~50 curated quality NSE stocks using EMPIRE framework metrics
+    (ROE, EPS growth, margins, D/E, PEG) from yfinance fundamentals.
+    """
+    try:
+        from strategy.bigbag import run_bigbag
+        logger.info("BigBag screen: starting…")
+        result = run_bigbag()
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result.get("error", "Screen failed"))
+        logger.info(
+            "BigBag complete — %d stocks, %d Tier-1, %d Tier-2",
+            result["summary"]["total"],
+            result["summary"]["tier1"],
+            result["summary"]["tier2"],
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("BigBag error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"BigBag screen failed: {str(e)}")
+
+
 @app.get("/api/health")
 async def health_check():
     return {
