@@ -1347,28 +1347,39 @@ let icSortKey  = 'setup_count';
 let icSortAsc  = false;
 let icExpanded = new Set();
 
+// ── Time Windows Definition ────────────────────────────────────────────────
+const IC_TIME_WINDOWS = [
+  { label: 'Pre-Market',   time: '9:00–9:15',   color: '#666',    tip: 'Gap analysis, PDH/PDL prep, news scan' },
+  { label: 'Opening',      time: '9:15–9:30',   color: '#f59e0b', tip: 'Opening auction — observe only, no trades' },
+  { label: 'ORB Window',   time: '9:30–10:15',  color: '#22c55e', tip: '?? PRIME: Opening Range Breakout setup' },
+  { label: 'Trend Follow', time: '10:15–11:30', color: '#4a9eff', tip: 'Momentum continuation + VWAP reversion' },
+  { label: 'Dead Zone',    time: '11:30–12:30', color: '#444',    tip: '❌ NO TRADES — lunch chop, low volume' },
+  { label: 'Afternoon',    time: '12:30–2:00',  color: '#a855f7', tip: 'Institutional activity + VWAP plays' },
+  { label: 'Close',        time: '2:00–3:30',   color: '#f59e0b', tip: '⚠️ Exit all positions before 3:15 PM' },
+];
+
 // ── Fetch ─────────────────────────────────────────────────────────────────
 async function runIntraContra() {
   const btn = document.getElementById('icRunBtn');
   btn.disabled = true;
   btn.classList.add('loading');
   btn.textContent = '⏳ Scanning…';
-  showLoader('Fetching Nifty trend + VIX…');
+  showLoader('Fetching Nifty VWAP levels…');
 
   const msgs = [
-    'Computing sector ranks…',
-    'Screening EMA alignment…',
-    'RSI + ADX quality gate…',
-    'Detecting Flag & Pole setups…',
-    'Scanning 52-week breakouts…',
-    'Finding EMA pullback entries…',
-    'Identifying sector rotation plays…',
-    'Building trade plans…',
+    'Fetching PDH / PDL levels…',
+    'Computing 20-day VWAP proxy…',
+    'Detecting ORB breakout setups…',
+    'Scanning VWAP reversion plays…',
+    'Identifying gap setups…',
+    'Computing ATR & RSI…',
+    'Building weekly pivot levels…',
+    'Ranking by setup priority…',
   ];
   let mi = 0;
   const t = setInterval(() => {
     document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
-  }, 9000);
+  }, 6000);
 
   try {
     const res = await fetch(`${API}/api/strategy/intra-contra`);
@@ -1401,6 +1412,7 @@ function renderIntraContra(data) {
   document.getElementById('icLastRun').textContent = ts;
 
   renderIcCtx(data.market_context || {});
+  renderIcTimeBar();
   icStocks = data.stocks || [];
   renderIcChips(data.summary || {});
   applyIcFilters();
@@ -1412,20 +1424,23 @@ function renderIcCtx(ctx) {
                 : ctx.trade_bias_color === 'red'   ? 'var(--red)'
                 : '#f59e0b';
 
-  const wkCol = ctx.nifty_weekly === 'BULL'     ? 'var(--green)'
-              : ctx.nifty_weekly === 'BEAR'     ? 'var(--red)'
-              : '#f59e0b';
-  const dyCol = ctx.nifty_daily === 'STRONG_BULL' || ctx.nifty_daily === 'BULL'
-              ? 'var(--green)' : ctx.nifty_daily === 'BEAR' ? 'var(--red)' : '#f59e0b';
-
-  const vixCol = ctx.vix_status === 'LOW'     ? 'var(--green)'
-               : ctx.vix_status === 'ELEVATED'? '#f59e0b'
-               : ctx.vix_status === 'HIGH'    ? 'var(--red)'
+  const vixCol = ctx.vix_status === 'LOW'      ? 'var(--green)'
+               : ctx.vix_status === 'MODERATE' ? 'var(--green)'
+               : ctx.vix_status === 'ELEVATED' ? '#f59e0b'
+               : ctx.vix_status === 'HIGH'     ? 'var(--red)'
                : 'var(--text-muted)';
 
   const chgHtml = ctx.nifty_chg_pct != null
     ? `<span style="color:${ctx.nifty_chg_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13px">
         ${ctx.nifty_chg_pct >= 0 ? '+' : ''}${ctx.nifty_chg_pct.toFixed(2)}%</span>` : '';
+
+  const vwapDev = ctx.nifty_price && ctx.nifty_vwap
+    ? ((ctx.nifty_price - ctx.nifty_vwap) / ctx.nifty_vwap * 100).toFixed(1) : null;
+
+  const vixNote = !ctx.vix_value ? '' :
+    ctx.vix_value < 13  ? 'Low vol — trending moves' :
+    ctx.vix_value <= 18 ? 'Moderate — normal intraday' :
+    ctx.vix_value <= 22 ? 'Elevated — reduce size' : 'High — avoid ORB';
 
   document.getElementById('icCtxGrid').innerHTML = `
     <div class="ic-ctx-card">
@@ -1435,47 +1450,59 @@ function renderIcCtx(ctx) {
         ${chgHtml}
       </div>
       <div class="ic-ctx-sub" style="color:var(--text-muted)">
-        EMA20: ${ctx.nifty_ema20 != null ? '₹' + ctx.nifty_ema20.toLocaleString('en-IN') : '–'}
-        &nbsp;/&nbsp; EMA50: ${ctx.nifty_ema50 != null ? '₹' + ctx.nifty_ema50.toLocaleString('en-IN') : '–'}
+        PDH: ${ctx.nifty_pdh != null ? '₹' + ctx.nifty_pdh.toLocaleString('en-IN') : '–'}
+        &nbsp;/&nbsp; PDL: ${ctx.nifty_pdl != null ? '₹' + ctx.nifty_pdl.toLocaleString('en-IN') : '–'}
       </div>
-      <div class="ic-ctx-sub">RSI: <strong style="color:${ctx.nifty_rsi >= 55 && ctx.nifty_rsi <= 75 ? 'var(--green)' : 'var(--text-muted)'}">${ctx.nifty_rsi != null ? ctx.nifty_rsi.toFixed(1) : '–'}</strong>
-        &nbsp;ADX: <strong>${ctx.nifty_adx != null ? ctx.nifty_adx.toFixed(1) : '–'}</strong></div>
+      <div class="ic-ctx-sub">RSI: <strong style="color:${ctx.nifty_rsi >= 55 && ctx.nifty_rsi <= 75 ? 'var(--green)' : ctx.nifty_rsi < 40 ? 'var(--red)' : 'var(--text-muted)'}">${ctx.nifty_rsi != null ? ctx.nifty_rsi.toFixed(1) : '–'}</strong></div>
     </div>
     <div class="ic-ctx-card">
-      <div class="ic-ctx-label">Weekly Trend</div>
-      <div class="ic-ctx-val" style="color:${wkCol}">${ctx.nifty_weekly || '–'}</div>
-      <div class="ic-ctx-sub" style="color:var(--text-muted)">From weekly EMA(10)/EMA(20)</div>
-    </div>
-    <div class="ic-ctx-card">
-      <div class="ic-ctx-label">Daily Trend</div>
-      <div class="ic-ctx-val" style="color:${dyCol}">${(ctx.nifty_daily || '–').replace('_', ' ')}</div>
-      <div class="ic-ctx-sub" style="color:var(--text-muted)">EMA 20 / 50 alignment</div>
+      <div class="ic-ctx-label">VWAP (20-day proxy)</div>
+      <div class="ic-ctx-val">${ctx.nifty_vwap != null ? '₹' + ctx.nifty_vwap.toLocaleString('en-IN') : '–'}</div>
+      <div class="ic-ctx-sub" style="color:${vwapDev != null && parseFloat(vwapDev) >= 0 ? 'var(--green)' : 'var(--red)'}">
+        ${vwapDev != null ? (parseFloat(vwapDev) >= 0 ? '+' : '') + vwapDev + '% from VWAP' : '–'}
+      </div>
+      <div class="ic-ctx-sub" style="color:var(--text-dim)">Nifty ${ctx.trade_bias === 'LONG' ? 'above' : 'below'} VWAP</div>
     </div>
     <div class="ic-ctx-card">
       <div class="ic-ctx-label">India VIX</div>
       <div class="ic-ctx-val" style="color:${vixCol}">${ctx.vix_value != null ? ctx.vix_value.toFixed(1) : '–'}</div>
       <div class="ic-ctx-sub" style="color:${vixCol}">${ctx.vix_status || '–'}</div>
+      <div class="ic-ctx-sub" style="color:var(--text-dim)">${vixNote}</div>
     </div>
     <div class="ic-ctx-card ic-ctx-bias">
       <div class="ic-ctx-label">Trade Bias</div>
       <div class="ic-ctx-val" style="color:${biasCol};font-size:22px">${ctx.trade_bias || '–'}</div>
       <div class="ic-ctx-sub" style="color:var(--text-dim);font-size:10px">
-        Both Weekly &amp; Daily must be BULL for LONG bias
+        ${ctx.trade_bias === 'LONG' ? 'Nifty above VWAP → favour longs' : 'Nifty below VWAP → favour shorts / caution'}
       </div>
     </div>
   `;
 }
 
+// ── Time Windows Bar ──────────────────────────────────────────────────────
+function renderIcTimeBar() {
+  const el = document.getElementById('icTimeBar');
+  if (!el) return;
+  el.innerHTML = IC_TIME_WINDOWS.map(w => `
+    <div class="ic-tw-block" style="border-top:3px solid ${w.color}">
+      <div class="ic-tw-label" style="color:${w.color}">${w.label}</div>
+      <div class="ic-tw-time">${w.time}</div>
+      <div class="ic-tw-tip">${w.tip}</div>
+    </div>
+  `).join('');
+}
+
 // ── Summary chips ─────────────────────────────────────────────────────────
 function renderIcChips(s) {
   document.getElementById('icChips').innerHTML = `
-    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.total ?? 0}</span><span class="ic-chip-lbl">NIFTY 100</span></div>
-    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.ema_aligned ?? 0}</span><span class="ic-chip-lbl">EMA Aligned</span></div>
-    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.with_setups ?? 0}</span><span class="ic-chip-lbl">Active Setups</span></div>
-    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.flag_pole ?? 0}</span><span class="ic-chip-lbl">Flag &amp; Pole</span></div>
-    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.ema_pullback ?? 0}</span><span class="ic-chip-lbl">EMA Pullback</span></div>
-    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.high_breakout ?? 0}</span><span class="ic-chip-lbl">52W Breakout</span></div>
-    <div class="ic-chip ic-chip-purple"><span class="ic-chip-num">${s.sector_rotation ?? 0}</span><span class="ic-chip-lbl">Sector Rotation</span></div>
+    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.total ?? 0}</span><span class="ic-chip-lbl">Watchlist</span></div>
+    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.qualified ?? 0}</span><span class="ic-chip-lbl">Qualified</span></div>
+    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.with_setups ?? 0}</span><span class="ic-chip-lbl">Has Setup</span></div>
+    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.orb_long ?? 0}</span><span class="ic-chip-lbl">ORB Long</span></div>
+    <div class="ic-chip ic-chip-red"><span class="ic-chip-num">${s.orb_short ?? 0}</span><span class="ic-chip-lbl">ORB Short</span></div>
+    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.vwap_rev ?? 0}</span><span class="ic-chip-lbl">VWAP Rev</span></div>
+    <div class="ic-chip ic-chip-purple"><span class="ic-chip-num">${s.gap_plays ?? 0}</span><span class="ic-chip-lbl">Gap Plays</span></div>
+    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.above_vwap ?? 0}</span><span class="ic-chip-lbl">Above VWAP</span></div>
   `;
 }
 
@@ -1497,10 +1524,18 @@ function applyIcFilters() {
   let f = [...icStocks];
   if (icFilter === 'HAS_SETUP') {
     f = f.filter(s => s.has_setup);
-  } else if (icFilter === 'EMA_ALIGNED') {
-    f = f.filter(s => s.ema_aligned);
-  } else if (['FLAG_POLE','EMA_PULLBACK','HIGH_BREAKOUT','SECTOR_ROTATION'].includes(icFilter)) {
-    f = f.filter(s => s.setups && s.setups.some(st => st.setup === icFilter));
+  } else if (icFilter === 'ABOVE_VWAP') {
+    f = f.filter(s => s.above_vwap);
+  } else if (icFilter === 'QUALIFIED') {
+    f = f.filter(s => s.qualified);
+  } else if (icFilter === 'ORB_LONG') {
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'ORB_LONG'));
+  } else if (icFilter === 'ORB_SHORT') {
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'ORB_SHORT'));
+  } else if (icFilter === 'VWAP_REVERSION') {
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup.startsWith('VWAP_REVERSION')));
+  } else if (icFilter === 'GAP_PLAY') {
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'GAP_UP' || st.setup === 'GAP_DOWN'));
   }
   f.sort((a, b) => {
     let va = a[icSortKey], vb = b[icSortKey];
@@ -1540,56 +1575,57 @@ function buildIcRow(s) {
     ? `<span style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`
     : '–';
 
-  // Weekly / Daily trend badges
-  const wkCol = s.weekly_trend === 'BULL' ? 'var(--green)' : s.weekly_trend === 'BEAR' ? 'var(--red)' : '#f59e0b';
-  const dyCol = s.daily_trend  === 'STRONG_BULL' || s.daily_trend === 'BULL' ? 'var(--green)'
-              : s.daily_trend  === 'BEAR' ? 'var(--red)' : '#f59e0b';
-  const trendHtml = `<span style="color:${wkCol};font-size:10px">W:${s.weekly_trend?.charAt(0) ?? '?'}</span>
-    <span style="color:var(--text-dim)"> / </span>
-    <span style="color:${dyCol};font-size:10px">D:${(s.daily_trend || '?').replace('STRONG_','S+').replace('BULL','B').replace('BEAR','Br').replace('NEUTRAL','N')}</span>`;
+  // VWAP deviation
+  const vd = s.vwap_dev_pct;
+  const vdCol = vd != null
+    ? (vd >= 1.5 ? 'var(--red)' : vd <= -1.5 ? 'var(--green)' : 'var(--text-muted)')
+    : 'var(--text-dim)';
+  const vdHtml = vd != null
+    ? `<span style="color:${vdCol};font-family:var(--mono)">${vd >= 0 ? '+' : ''}${vd.toFixed(1)}%</span>`
+    : '–';
 
-  // RSI colour
+  // ATR%
+  const atrCol = s.atr_pct != null && s.atr_pct >= 1.5 ? 'var(--green)' : 'var(--text-dim)';
+
+  // Volume in lakhs
+  const volCol = s.avg_vol_l >= 100 ? 'var(--green)' : s.avg_vol_l >= 50 ? 'var(--text-muted)' : 'var(--red)';
+
+  // RSI
   const rsiCol = s.rsi_14 != null && s.rsi_14 >= 55 && s.rsi_14 <= 75 ? 'var(--green)'
-               : s.rsi_14 != null && s.rsi_14 < 40 ? 'var(--red)' : 'var(--text-muted)';
+               : s.rsi_14 != null && s.rsi_14 < 35 ? 'var(--red)'
+               : s.rsi_14 != null && s.rsi_14 > 75 ? '#f59e0b' : 'var(--text-muted)';
 
-  // ADX
-  const adxCol = s.adx_14 != null && s.adx_14 >= 25 ? 'var(--green)' : 'var(--text-muted)';
-
-  // Volume
-  const volCol = s.vol_ratio >= 1.5 ? 'var(--green)' : s.vol_ratio >= 1.0 ? 'var(--text-muted)' : 'var(--red)';
-
-  // 52W
-  const d52Col = s.dist_52wh >= -5 ? 'var(--green)' : s.dist_52wh >= -15 ? '#f59e0b' : 'var(--text-muted)';
-
-  // Sector
-  const secHtml = `<span style="color:var(--text-muted)">${s.sector}</span>
-    <br><span style="font-size:10px;color:${s.sector_rank <= 3 ? '#f59e0b' : 'var(--text-dim)'}">
-      ${s.sector_rank <= 3 ? '🔥' : ''} #${s.sector_rank ?? '–'}
-    </span>`;
+  // PDH/PDL compact
+  const pdhpdl = (s.pdh && s.pdl)
+    ? `<span style="color:var(--green);font-size:10px">H:${fmt(s.pdh)}</span><br><span style="color:var(--red);font-size:10px">L:${fmt(s.pdl)}</span>`
+    : '–';
 
   // Setup badges
-  const setupCols = { FLAG_POLE: '#f59e0b', EMA_PULLBACK: 'var(--green)', HIGH_BREAKOUT: 'var(--blue)', SECTOR_ROTATION: '#a855f7' };
-  const setupIcons = { FLAG_POLE: '🚩', EMA_PULLBACK: '📉', HIGH_BREAKOUT: '🚀', SECTOR_ROTATION: '🔄' };
+  const setupCols = {
+    ORB_LONG: 'var(--green)', ORB_SHORT: 'var(--red)',
+    VWAP_REVERSION_LONG: '#f59e0b', VWAP_REVERSION_SHORT: '#f59e0b',
+    GAP_UP: '#4a9eff', GAP_DOWN: '#a855f7',
+  };
+  const aboveVwapDot = s.above_vwap ? `<span style="color:var(--green);font-size:10px"> ↑V</span>` : '';
   const setupsHtml = !s.setups?.length
-    ? `<span style="color:var(--text-dim);font-size:10px">${s.ema_aligned ? 'Aligned' : '–'}</span>`
-    : s.setups.map(st =>
-        `<span class="ic-setup-badge" style="background:${setupCols[st.setup]}22;color:${setupCols[st.setup]};border:1px solid ${setupCols[st.setup]}44">
-          ${setupIcons[st.setup]} ${st.setup_label}
-        </span>`
-      ).join('');
+    ? `<span style="color:var(--text-dim);font-size:10px">${s.above_vwap ? '↑ VWAP' : s.qualified ? 'Qualified' : '–'}</span>`
+    : s.setups.map(st => {
+        const c = setupCols[st.setup] || '#f59e0b';
+        return `<span class="ic-setup-badge" style="background:${c}22;color:${c};border:1px solid ${c}44">${st.icon} ${st.setup_label}</span>`;
+      }).join('');
 
   return `
     <tr id="${rowId}" class="ic-stock-row ${s.has_setup ? 'ic-has-setup' : ''}" onclick="toggleIcRow('${id}')">
       <td class="ic-expand">${icExpanded.has(id) ? '▼' : '▶'}</td>
-      <td><strong>${s.symbol}</strong><br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
-      <td>${secHtml}</td>
+      <td><strong>${s.symbol}</strong>${aboveVwapDot}<br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
+      <td><span style="color:var(--text-muted)">${s.sector}</span></td>
       <td style="font-family:var(--mono)">₹${fmt(s.cmp)}</td>
       <td>${chgHtml}</td>
-      <td style="white-space:nowrap">${trendHtml}</td>
+      <td>${vdHtml}</td>
+      <td style="color:${atrCol};font-family:var(--mono)">${s.atr_pct != null ? s.atr_pct.toFixed(1) + '%' : '–'}</td>
+      <td style="color:${volCol};font-family:var(--mono)">${s.avg_vol_l != null ? s.avg_vol_l.toFixed(0) + 'L' : '–'}</td>
       <td style="color:${rsiCol};font-family:var(--mono)">${s.rsi_14 != null ? s.rsi_14.toFixed(1) : '–'}</td>
-      <td style="color:${adxCol};font-family:var(--mono)">${s.adx_14 != null ? s.adx_14.toFixed(1) : '–'}</td>
-      <td style="color:${volCol};font-family:var(--mono)">${s.vol_ratio != null ? s.vol_ratio.toFixed(1) + 'x' : '–'}</td>
-      <td style="color:${d52Col};font-family:var(--mono)">${s.dist_52wh != null ? s.dist_52wh + '%' : '–'}</td>
+      <td style="font-size:10px">${pdhpdl}</td>
       <td class="ic-setups-cell">${setupsHtml}</td>
     </tr>
     <tr id="${detId}" class="ic-detail-row" style="display:none">
@@ -1599,53 +1635,63 @@ function buildIcRow(s) {
 }
 
 function buildIcDetail(s) {
-  const emaLadder = `
+  const levelsHtml = `
     <div class="ic-ema-ladder">
       <div class="ic-ema-row"><span>CMP</span><span style="font-family:var(--mono);color:var(--text)">₹${fmt(s.cmp)}</span></div>
-      <div class="ic-ema-row"><span>EMA 20</span><span style="font-family:var(--mono)">₹${fmt(s.ema20)}</span></div>
-      <div class="ic-ema-row"><span>EMA 50</span><span style="font-family:var(--mono)">₹${fmt(s.ema50)}</span></div>
-      <div class="ic-ema-row"><span>EMA 200</span><span style="font-family:var(--mono)">₹${fmt(s.ema200)}</span></div>
-      <div class="ic-ema-row"><span>52W High</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.w52_high)}</span></div>
+      <div class="ic-ema-row"><span>VWAP (20d)</span><span style="font-family:var(--mono);color:#f59e0b">₹${fmt(s.vwap_20)}</span></div>
+      <div class="ic-ema-row"><span>PDH</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.pdh)}</span></div>
+      <div class="ic-ema-row"><span>PDL</span><span style="font-family:var(--mono);color:var(--red)">₹${fmt(s.pdl)}</span></div>
+      <div class="ic-ema-row"><span>Wk Pivot</span><span style="font-family:var(--mono)">₹${fmt(s.wk_pivot)}</span></div>
+      <div class="ic-ema-row"><span>Wk R1</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.wk_r1)}</span></div>
+      <div class="ic-ema-row"><span>Wk S1</span><span style="font-family:var(--mono);color:var(--red)">₹${fmt(s.wk_s1)}</span></div>
+      <div class="ic-ema-row"><span>EMA 9</span><span style="font-family:var(--mono)">₹${fmt(s.ema9)}</span></div>
+      <div class="ic-ema-row"><span>EMA 21</span><span style="font-family:var(--mono)">₹${fmt(s.ema21)}</span></div>
+      <div class="ic-ema-row"><span>ATR(14)</span><span style="font-family:var(--mono)">${s.atr_14 != null ? '₹' + fmt(s.atr_14) : '–'} (${s.atr_pct != null ? s.atr_pct.toFixed(1) + '%' : '–'})</span></div>
       <div class="ic-ema-row"><span>RSI(14)</span><span style="font-family:var(--mono)">${s.rsi_14 != null ? s.rsi_14.toFixed(1) : '–'}</span></div>
-      <div class="ic-ema-row"><span>ADX(14)</span><span style="font-family:var(--mono)">${s.adx_14 != null ? s.adx_14.toFixed(1) : '–'}</span></div>
-      <div class="ic-ema-row"><span>Vol Ratio</span><span style="font-family:var(--mono)">${s.vol_ratio != null ? s.vol_ratio.toFixed(2) + 'x' : '–'}</span></div>
-      <div class="ic-ema-row"><span>Daily Val</span><span style="font-family:var(--mono)">${s.avg_val_cr ?? '–'} Cr</span></div>
+      <div class="ic-ema-row"><span>Vol (20d avg)</span><span style="font-family:var(--mono)">${s.avg_vol_l != null ? s.avg_vol_l.toFixed(0) + 'L' : '–'}</span></div>
     </div>`;
 
   if (!s.setups?.length) {
-    return `<div class="ic-detail-wrap">${emaLadder}<div style="padding:14px;color:var(--text-dim)">No active setups. Stock screened but no pattern trigger yet.</div></div>`;
+    return `<div class="ic-detail-wrap">${levelsHtml}<div style="padding:14px;color:var(--text-dim)">${
+      s.qualified ? 'Stock qualified — waiting for price trigger near PDH/PDL.' : 'Below ATR or volume threshold.'
+    }</div></div>`;
   }
 
-  const setupCols = { FLAG_POLE: '#f59e0b', EMA_PULLBACK: 'var(--green)', HIGH_BREAKOUT: 'var(--blue)', SECTOR_ROTATION: '#a855f7' };
+  const setupCols = {
+    ORB_LONG: 'var(--green)', ORB_SHORT: 'var(--red)',
+    VWAP_REVERSION_LONG: '#f59e0b', VWAP_REVERSION_SHORT: '#f59e0b',
+    GAP_UP: '#4a9eff', GAP_DOWN: '#a855f7',
+  };
+
   const cardsHtml = s.setups.map(st => {
-    const risk = st.entry && st.stop_loss ? st.entry - st.stop_loss : null;
-    const riskPct = risk && st.entry ? ((risk / st.entry) * 100).toFixed(1) : null;
-    const pos1L = risk ? Math.floor(1000000 * 0.02 / risk) : null; // 2% of 10L
-    const col   = setupCols[st.setup] || 'var(--text)';
+    const col      = setupCols[st.setup] || '#f59e0b';
+    const isShort  = st.setup.includes('SHORT') || st.setup === 'GAP_DOWN';
+    const risk     = st.entry && st.stop_loss
+      ? (isShort ? st.stop_loss - st.entry : st.entry - st.stop_loss) : null;
+    const riskPct  = risk && st.entry ? (Math.abs(risk) / st.entry * 100).toFixed(1) : null;
+    const pos1L    = risk && Math.abs(risk) > 0 ? Math.floor(1000000 * 0.01 / Math.abs(risk)) : null;
 
     return `
       <div class="ic-setup-card" style="border-top-color:${col}">
         <div class="ic-setup-hdr">
-          <span class="ic-setup-name" style="color:${col}">${st.setup_icon} ${st.setup_label}</span>
-          <span class="ic-setup-wr" style="color:${col}">${st.win_rate}</span>
+          <span class="ic-setup-name" style="color:${col}">${st.icon} ${st.setup_label}</span>
+          <span class="ic-setup-wr" style="color:var(--text-muted);font-size:10px">⏰ ${st.window}</span>
         </div>
         <div class="ic-setup-note">${st.note || ''}</div>
         <div class="ic-levels-grid">
           <div class="ic-lvl ic-entry"><span class="ic-lvl-lbl">Entry</span><span class="ic-lvl-val">₹${fmt(st.entry)}</span></div>
-          <div class="ic-lvl ic-stop"><span class="ic-lvl-lbl">Stop Loss</span><span class="ic-lvl-val">₹${fmt(st.stop_loss)}</span>${riskPct ? `<span class="ic-lvl-sub">−${riskPct}%</span>` : ''}</div>
-          <div class="ic-lvl ic-t1"><span class="ic-lvl-lbl">T1 (1.5R) — 40%</span><span class="ic-lvl-val">₹${fmt(st.target1)}</span></div>
-          <div class="ic-lvl ic-t2"><span class="ic-lvl-lbl">T2 (2.5R) — 40%</span><span class="ic-lvl-val">₹${fmt(st.target2)}</span></div>
-          <div class="ic-lvl ic-t3"><span class="ic-lvl-lbl">T3 (trail) — 20%</span><span class="ic-lvl-val">₹${fmt(st.target3)}</span></div>
-          <div class="ic-lvl ic-trail"><span class="ic-lvl-lbl">Trail Stop</span><span class="ic-lvl-val">₹${fmt(st.trail_ref)} <span style="font-size:9px">(${st.trail_label})</span></span></div>
+          <div class="ic-lvl ic-stop"><span class="ic-lvl-lbl">Stop Loss</span><span class="ic-lvl-val">₹${fmt(st.stop_loss)}</span>${riskPct ? `<span class="ic-lvl-sub">${isShort ? '+' : '−'}${riskPct}%</span>` : ''}</div>
+          <div class="ic-lvl ic-t1"><span class="ic-lvl-lbl">T1 (1:2 R:R)</span><span class="ic-lvl-val">₹${fmt(st.target1)}</span></div>
+          <div class="ic-lvl ic-t2"><span class="ic-lvl-lbl">T2 (1:3 R:R)</span><span class="ic-lvl-val">₹${fmt(st.target2)}</span></div>
         </div>
         <div class="ic-setup-ftr">
-          ${pos1L ? `<span>Qty for ₹10L @ 2% risk: <strong>${pos1L.toLocaleString('en-IN')}</strong></span>` : ''}
-          <span>Vol: <strong>${st.vol_ratio != null ? st.vol_ratio + 'x' : '–'}</strong></span>
+          <span>R:R — ${st.rr}</span>
+          ${pos1L ? `<span>Qty @ 1% risk / ₹10L: <strong>${pos1L.toLocaleString('en-IN')}</strong></span>` : ''}
         </div>
       </div>`;
   }).join('');
 
-  return `<div class="ic-detail-wrap">${emaLadder}<div class="ic-setups-list">${cardsHtml}</div></div>`;
+  return `<div class="ic-detail-wrap">${levelsHtml}<div class="ic-setups-list">${cardsHtml}</div></div>`;
 }
 
 function toggleIcRow(id) {
@@ -1660,29 +1706,26 @@ function toggleIcRow(id) {
   if (btn) btn.textContent = open ? '▶' : '▼';
 }
 
-// ── Position size calculator ──────────────────────────────────────────────
+// ── Position size calculator (2-tier risk) ───────────────────────────────
 function calcIcPosition() {
-  const capital = parseFloat(document.getElementById('icCapital').value) || 0;
-  const entry   = parseFloat(document.getElementById('icEntry').value)   || 0;
-  const stop    = parseFloat(document.getElementById('icStop').value)    || 0;
-  const riskPct = parseFloat(document.getElementById('icRiskPct').value) || 2;
-  const el      = document.getElementById('icCalcOut');
+  const capital  = parseFloat(document.getElementById('icCapital').value) || 0;
+  const entry    = parseFloat(document.getElementById('icEntry').value)   || 0;
+  const stop     = parseFloat(document.getElementById('icStop').value)    || 0;
+  const riskTier = parseFloat(document.getElementById('icRiskTier').value) || 1;
+  const el       = document.getElementById('icCalcOut');
 
   if (!entry || !stop || entry <= stop) {
     el.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Enter valid Entry &gt; Stop Loss.</p>';
     return;
   }
 
-  const maxLoss  = capital * (riskPct / 100);
-  const riskPer  = entry - stop;
-  const shares   = Math.floor(maxLoss / riskPer);
-  const posVal   = shares * entry;
-  const posValPct= (posVal / capital * 100).toFixed(1);
-  const t1       = entry + riskPer * 1.5;
-  const t2       = entry + riskPer * 2.5;
-  const t3       = entry + riskPer * 4.0;
-  const be       = entry;                  // breakeven after moving SL at +2R
-  const addAt    = entry + riskPer * 1.5;  // pyramid add trigger
+  const maxLoss   = capital * (riskTier / 100);
+  const riskPer   = entry - stop;
+  const shares    = Math.floor(maxLoss / riskPer);
+  const posVal    = shares * entry;
+  const posValPct = (posVal / capital * 100).toFixed(1);
+  const t1        = entry + riskPer * 2;
+  const t2        = entry + riskPer * 3;
 
   el.innerHTML = `
     <div class="ic-calc-row"><span>Capital at Risk</span><strong style="color:var(--red)">₹${maxLoss.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
@@ -1690,14 +1733,12 @@ function calcIcPosition() {
     <div class="ic-calc-row"><span>Position Size</span><strong style="color:#f59e0b">${shares.toLocaleString('en-IN')} shares</strong></div>
     <div class="ic-calc-row"><span>Position Value</span><strong>₹${posVal.toLocaleString('en-IN',{maximumFractionDigits:0})} (${posValPct}%)</strong></div>
     <hr style="border-color:var(--border);margin:8px 0">
-    <div class="ic-calc-row"><span>T1 @ 1.5R — exit 40%</span><strong style="color:var(--green)">₹${t1.toFixed(2)}</strong></div>
-    <div class="ic-calc-row"><span>T2 @ 2.5R — exit 40%</span><strong style="color:var(--green)">₹${t2.toFixed(2)}</strong></div>
-    <div class="ic-calc-row"><span>T3 trail 20%</span><strong style="color:var(--green)">₹${t3.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>T1 @ 1:2 R:R</span><strong style="color:var(--green)">₹${t1.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>T2 @ 1:3 R:R</span><strong style="color:var(--green)">₹${t2.toFixed(2)}</strong></div>
     <hr style="border-color:var(--border);margin:8px 0">
-    <div class="ic-calc-row"><span>At +2R → SL to breakeven</span><strong>₹${be.toFixed(2)}</strong></div>
-    <div class="ic-calc-row"><span>Pyramid add trigger (+1.5R)</span><strong style="color:#f59e0b">₹${addAt.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>Breakeven (at +1R)</span><strong>₹${entry.toFixed(2)}</strong></div>
     <div class="ic-calc-row" style="font-size:10px;color:var(--text-dim);margin-top:4px">
-      <span>Max 6 positions → heat</span><strong>${(riskPct * 6).toFixed(1)}%</strong>
+      <span>Max 3 positions → heat</span><strong>${(riskTier * 3).toFixed(1)}%</strong>
     </div>
   `;
 }

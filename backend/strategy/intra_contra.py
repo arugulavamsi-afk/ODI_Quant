@@ -1,16 +1,13 @@
 """
-IntraContra — 3M Momentum Swing System
-=======================================
-Pillars:
-  1  Trend Identification  — only trade with the tide (weekly + daily)
-  2  Entry Precision       — 4 high-probability setup types
-  3  Asymmetric R:R        — minimum 1:2.5 on every trade
-
-Setups:
-  A  Flag & Pole Breakout    (~68% win rate)
-  B  EMA Pullback Entry      (best R:R)
-  C  52-Week High Breakout   (championship maker)
-  D  Sector Rotation Play    (ride institutional wave)
+IntraContra — VWAP Momentum + Institutional Order Flow
+=======================================================
+Curated 20-stock watchlist of high-liquidity NSE/F&O names.
+Pre-market prep analysis using EOD daily data:
+  • Key levels  — PDH / PDL / PDC / Weekly Pivot / R1 / S1
+  • VWAP proxy  — 20-day rolling typical-price × volume VWAP
+  • Indicators  — ATR(14), RSI(14), 9 EMA, 21 EMA
+  • Setups      — ORB Long/Short, VWAP Reversion, Gap Play
+  • Sizing      — 2-tier risk system (1% / 2% / 0.5%)
 """
 
 import logging
@@ -22,275 +19,69 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
-# ─── Technical Indicators ────────────────────────────────────────────────────
+# ─── Curated Watchlist ────────────────────────────────────────────────────────
+# 20 high-liquidity Nifty 50 / F&O active stocks
+IC_WATCHLIST = {
+    "RELIANCE.NS":   {"name": "Reliance Industries",      "sector": "Energy"},
+    "HDFCBANK.NS":   {"name": "HDFC Bank",                "sector": "Banking"},
+    "ICICIBANK.NS":  {"name": "ICICI Bank",               "sector": "Banking"},
+    "INFY.NS":       {"name": "Infosys",                  "sector": "IT"},
+    "TATAMOTORS.NS": {"name": "Tata Motors",              "sector": "Auto"},
+    "BAJFINANCE.NS": {"name": "Bajaj Finance",            "sector": "Finance"},
+    "AXISBANK.NS":   {"name": "Axis Bank",                "sector": "Banking"},
+    "SBIN.NS":       {"name": "State Bank of India",      "sector": "Banking"},
+    "LT.NS":         {"name": "Larsen & Toubro",          "sector": "Infra"},
+    "KOTAKBANK.NS":  {"name": "Kotak Mahindra Bank",      "sector": "Banking"},
+    "TCS.NS":        {"name": "Tata Consultancy Services","sector": "IT"},
+    "WIPRO.NS":      {"name": "Wipro",                    "sector": "IT"},
+    "MARUTI.NS":     {"name": "Maruti Suzuki",            "sector": "Auto"},
+    "BHARTIARTL.NS": {"name": "Bharti Airtel",            "sector": "Telecom"},
+    "SUNPHARMA.NS":  {"name": "Sun Pharmaceutical",       "sector": "Pharma"},
+    "NTPC.NS":       {"name": "NTPC",                     "sector": "Energy"},
+    "ADANIPORTS.NS": {"name": "Adani Ports & SEZ",        "sector": "Infra"},
+    "M&M.NS":        {"name": "Mahindra & Mahindra",      "sector": "Auto"},
+    "HINDUNILVR.NS": {"name": "Hindustan Unilever",       "sector": "FMCG"},
+    "TATASTEEL.NS":  {"name": "Tata Steel",               "sector": "Metals"},
+}
+
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def _sf(val, d=2):
+    try:
+        f = float(val)
+        return None if (np.isnan(f) or np.isinf(f)) else round(f, d)
+    except Exception:
+        return None
+
 
 def _ema(s: pd.Series, span: int) -> pd.Series:
     return s.ewm(span=span, adjust=False).mean()
 
 
 def _rsi(s: pd.Series, period: int = 14) -> pd.Series:
-    delta    = s.diff()
-    gain     = delta.clip(lower=0)
-    loss     = (-delta).clip(lower=0)
-    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
-    rs       = avg_gain / avg_loss.replace(0, np.nan)
+    d     = s.diff()
+    gain  = d.clip(lower=0)
+    loss  = (-d).clip(lower=0)
+    ag    = gain.ewm(alpha=1/period, adjust=False).mean()
+    al    = loss.ewm(alpha=1/period, adjust=False).mean()
+    rs    = ag / al.replace(0, np.nan)
     return 100 - 100 / (1 + rs)
 
 
-def _adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14):
-    """Returns (adx, +DI, -DI) as three pd.Series."""
-    prev_close = close.shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low  - prev_close).abs(),
-    ], axis=1).max(axis=1)
-
-    up   = high.diff()
-    down = -(low.diff())
-
-    pdm = pd.Series(np.where((up > down) & (up > 0), up, 0.0), index=high.index)
-    ndm = pd.Series(np.where((down > up) & (down > 0), down, 0.0), index=high.index)
-
-    alpha = 1 / period
-    atr   = tr.ewm(alpha=alpha, adjust=False).mean().replace(0, np.nan)
-    pdi   = 100 * pdm.ewm(alpha=alpha, adjust=False).mean() / atr
-    ndi   = 100 * ndm.ewm(alpha=alpha, adjust=False).mean() / atr
-
-    denom = (pdi + ndi).replace(0, np.nan)
-    dx    = 100 * (pdi - ndi).abs() / denom
-    adx   = dx.ewm(alpha=alpha, adjust=False).mean()
-
-    return adx, pdi, ndi
+def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    pc = close.shift(1)
+    tr = pd.concat([high - low, (high - pc).abs(), (low - pc).abs()], axis=1).max(axis=1)
+    return tr.ewm(alpha=1/period, adjust=False).mean()
 
 
-def _sf(val, decimals=2):
-    try:
-        f = float(val)
-        return None if (np.isnan(f) or np.isinf(f)) else round(f, decimals)
-    except Exception:
-        return None
+# ─── Per-Stock Analysis ───────────────────────────────────────────────────────
 
-
-# ─── Weekly Trend from Daily Data ────────────────────────────────────────────
-
-def _weekly_trend(df: pd.DataFrame) -> str:
-    """Downsample daily → weekly, classify BULL / SIDEWAYS / BEAR."""
-    try:
-        wk = df["Close"].resample("W").last().dropna()
-        if len(wk) < 20:
-            return "UNKNOWN"
-        ema10w = float(_ema(wk, 10).iloc[-1])
-        ema20w = float(_ema(wk, 20).iloc[-1])
-        lc     = float(wk.iloc[-1])
-        if lc > ema10w > ema20w:
-            return "BULL"
-        if lc < ema10w < ema20w:
-            return "BEAR"
-        return "SIDEWAYS"
-    except Exception:
-        return "UNKNOWN"
-
-
-# ─── Setup Detection ─────────────────────────────────────────────────────────
-
-def _detect_setups(df: pd.DataFrame, sector_rank: int = 99) -> list:
-    if len(df) < 60:
-        return []
-
-    close  = df["Close"]
-    high   = df["High"]
-    low    = df["Low"]
-    opens  = df["Open"]
-    volume = df["Volume"]
-
-    e20  = _ema(close, 20)
-    e50  = _ema(close, 50)
-    e200 = _ema(close, 200) if len(close) >= 200 else _ema(close, len(close) // 2)
-
-    rsi_s        = _rsi(close)
-    adx_s, pdi_s, ndi_s = _adx(high, low, close)
-
-    lc     = float(close.iloc[-1])
-    le20   = float(e20.iloc[-1])
-    le50   = float(e50.iloc[-1])
-    le200  = float(e200.iloc[-1])
-    l_rsi  = _sf(rsi_s.iloc[-1])
-    l_adx  = _sf(adx_s.iloc[-1])
-    avg20v = float(volume.rolling(20).mean().iloc[-1]) if len(volume) >= 20 else float(volume.mean())
-    last_v = float(volume.iloc[-1]) if not pd.isna(volume.iloc[-1]) else 0.0
-    vol_ratio = round(last_v / avg20v, 2) if avg20v > 0 else 0
-
-    h52 = float(high.iloc[-252:].max() if len(high) >= 252 else high.max())
-    l52 = float(low.iloc[-252:].min()  if len(low)  >= 252 else low.min())
-
-    setups = []
-
-    # ── Bullish quality gate ──────────────────────────────────────────────────
-    ema_aligned = lc > le20 > le50 > le200
-
-    # ── Setup A: Flag & Pole Breakout ─────────────────────────────────────────
-    # Pole = >8% gain in a 5-15 day window ending 5+ days ago
-    # Flag = last 3-7 days tight range (<6%), breakout today on 2x vol
-    if len(close) >= 25 and ema_aligned:
-        pole_start = int(close.iloc[-22])
-        pole_end   = int(close.iloc[-8])
-        pole_gain  = (pole_end - pole_start) / pole_start * 100 if pole_start > 0 else 0
-
-        flag_candles = close.iloc[-7:-1]
-        flag_h = float(high.iloc[-7:-1].max())
-        flag_l = float(low.iloc[-7:-1].min())
-        flag_range_pct = (flag_h - flag_l) / flag_l * 100 if flag_l > 0 else 99
-
-        breakout = lc > flag_h
-        vol_ok   = vol_ratio >= 1.8
-
-        if pole_gain >= 7 and flag_range_pct <= 6 and breakout and vol_ok:
-            stop  = round(flag_l * 0.99, 2)
-            risk  = max(lc - stop, 0.01)
-            t1    = round(lc + risk * 1.5, 2)
-            t2    = round(lc + risk * 2.5, 2)
-            t3    = round(lc + risk * 4.0, 2)
-            setups.append({
-                "setup":       "FLAG_POLE",
-                "setup_label": "Flag & Pole Breakout",
-                "setup_icon":  "🔥",
-                "win_rate":    "~68%",
-                "entry":       round(lc, 2),
-                "stop_loss":   stop,
-                "target1":     t1,
-                "target2":     t2,
-                "target3":     t3,
-                "rr_t1":       round(risk * 1.5 / risk, 1),
-                "rr_t2":       round(risk * 2.5 / risk, 1),
-                "note":        f"Pole +{round(pole_gain,1)}%, flag {round(flag_range_pct,1)}% range, vol {vol_ratio}x",
-                "vol_ratio":   vol_ratio,
-                "flag_high":   round(flag_h, 2),
-                "trail_ref":   round(le20, 2),
-                "trail_label": "20 EMA",
-            })
-
-    # ── Setup B: EMA Pullback Entry ───────────────────────────────────────────
-    # Uptrend, price near 20 or 50 EMA, RSI 40-60, bullish candle
-    if ema_aligned and l_rsi is not None and 38 <= l_rsi <= 62:
-        dist20 = abs(lc - le20) / le20 * 100
-        dist50 = abs(lc - le50) / le50 * 100
-        ema_ref = None
-        dist_used = None
-        if dist20 <= 2.5:
-            ema_ref, dist_used = le20, dist20
-        elif dist50 <= 3.0:
-            ema_ref, dist_used = le50, dist50
-
-        if ema_ref:
-            bullish_candle = float(opens.iloc[-1]) < lc  # close > open
-
-            if bullish_candle:
-                sw_low = float(low.iloc[-5:].min())
-                stop   = round(min(sw_low * 0.995, ema_ref * 0.985), 2)
-                risk   = max(lc - stop, 0.01)
-                t1     = round(lc + risk * 1.5, 2)
-                t2     = round(lc + risk * 2.5, 2)
-                t3     = round(lc + risk * 4.0, 2)
-                label  = "20 EMA" if ema_ref == le20 else "50 EMA"
-                setups.append({
-                    "setup":       "EMA_PULLBACK",
-                    "setup_label": "EMA Pullback Entry",
-                    "setup_icon":  "🔥",
-                    "win_rate":    "Best R:R",
-                    "entry":       round(lc, 2),
-                    "stop_loss":   stop,
-                    "target1":     t1,
-                    "target2":     t2,
-                    "target3":     t3,
-                    "rr_t1":       round(risk * 1.5 / risk, 1),
-                    "rr_t2":       round(risk * 2.5 / risk, 1),
-                    "note":        f"Bouncing off {label} ({round(ema_ref,0):.0f}), RSI {l_rsi:.0f}, dist {round(dist_used,1)}%",
-                    "vol_ratio":   vol_ratio,
-                    "ema_ref":     round(ema_ref, 2),
-                    "ema_ref_label": label,
-                    "trail_ref":   round(le20, 2),
-                    "trail_label": "20 EMA",
-                })
-
-    # ── Setup C: 52-Week High Breakout ────────────────────────────────────────
-    # Within 2% of 52W high, consolidated 10-20 days, volume pickup
-    if len(close) >= 30:
-        dist_52wh = (lc - h52) / h52 * 100
-        # At or near 52W high (within 2%)
-        if dist_52wh >= -2.0:
-            # Check consolidation: last 10-20 days range < 8%
-            consol_h = float(high.iloc[-20:-2].max())
-            consol_l = float(low.iloc[-20:-2].min())
-            consol_range = (consol_h - consol_l) / consol_l * 100 if consol_l > 0 else 99
-
-            if consol_range <= 9 and vol_ratio >= 1.4:
-                stop  = round(consol_l * 0.99, 2)
-                risk  = max(lc - stop, 0.01)
-                t1    = round(lc + risk * 1.5, 2)
-                t2    = round(lc + risk * 2.5, 2)
-                t3    = round(lc + risk * 5.0, 2)  # 52W breakouts can run
-                setups.append({
-                    "setup":       "HIGH_BREAKOUT",
-                    "setup_label": "52-Week High Breakout",
-                    "setup_icon":  "🔥",
-                    "win_rate":    "Championship",
-                    "entry":       round(lc, 2),
-                    "stop_loss":   stop,
-                    "target1":     t1,
-                    "target2":     t2,
-                    "target3":     t3,
-                    "rr_t1":       round(risk * 1.5 / risk, 1),
-                    "rr_t2":       round(risk * 2.5 / risk, 1),
-                    "note":        f"At 52W high ₹{round(h52,0):.0f}, consol range {round(consol_range,1)}%, vol {vol_ratio}x",
-                    "vol_ratio":   vol_ratio,
-                    "w52_high":    round(h52, 2),
-                    "consol_range_pct": round(consol_range, 1),
-                    "trail_ref":   round(le20, 2),
-                    "trail_label": "20 EMA",
-                })
-
-    # ── Setup D: Sector Rotation Play ─────────────────────────────────────────
-    # Top-3 sector + uptrend + ADX > 20 + recent momentum
-    if sector_rank <= 3 and ema_aligned and l_adx is not None and l_adx >= 20:
-        # Check recent momentum: 5-day return > 2%
-        ret_5d = (lc / float(close.iloc[-6]) - 1) * 100 if len(close) >= 6 else 0
-        if ret_5d >= 1.5:
-            stop  = round(float(low.iloc[-5:].min()) * 0.99, 2)
-            risk  = max(lc - stop, 0.01)
-            t1    = round(lc + risk * 1.5, 2)
-            t2    = round(lc + risk * 2.5, 2)
-            t3    = round(lc + risk * 3.5, 2)
-            setups.append({
-                "setup":       "SECTOR_ROTATION",
-                "setup_label": "Sector Rotation Play",
-                "setup_icon":  "🔥",
-                "win_rate":    "5–15 day ride",
-                "entry":       round(lc, 2),
-                "stop_loss":   stop,
-                "target1":     t1,
-                "target2":     t2,
-                "target3":     t3,
-                "rr_t1":       round(risk * 1.5 / risk, 1),
-                "rr_t2":       round(risk * 2.5 / risk, 1),
-                "note":        f"Sector rank #{sector_rank}, ADX {round(l_adx,1)}, 5d +{round(ret_5d,1)}%",
-                "vol_ratio":   vol_ratio,
-                "sector_rank": sector_rank,
-                "trail_ref":   round(le20, 2),
-                "trail_label": "20 EMA",
-            })
-
-    return setups
-
-
-# ─── Per-Stock Processor ─────────────────────────────────────────────────────
-
-def _process_stock(sym: str, info: dict, sector_rank: int = 99) -> dict | None:
+def _process_stock(sym: str, info: dict) -> dict | None:
     try:
         t  = yf.Ticker(sym)
-        df = t.history(period="1y", auto_adjust=True)
-        if df is None or len(df) < 60:
+        df = t.history(period="6mo", auto_adjust=True)
+        if df is None or len(df) < 30:
             return None
 
         df.columns = [c.strip() for c in df.columns]
@@ -299,283 +90,299 @@ def _process_stock(sym: str, info: dict, sector_rank: int = 99) -> dict | None:
         close  = df["Close"]
         high   = df["High"]
         low    = df["Low"]
+        opens  = df["Open"]
         volume = df["Volume"]
 
-        lc    = float(close.iloc[-1])
-        le20  = float(_ema(close, 20).iloc[-1])
-        le50  = float(_ema(close, 50).iloc[-1])
-        le200 = float(_ema(close, 200).iloc[-1]) if len(close) >= 200 else float(_ema(close, len(close)//2).iloc[-1])
+        # ── Key daily levels ─────────────────────────────────────────────────
+        # "Previous day" = last complete session (iloc[-1] is yesterday's EOD)
+        pdh  = _sf(high.iloc[-1])
+        pdl  = _sf(low.iloc[-1])
+        pdc  = _sf(close.iloc[-1])
+        pdo  = _sf(opens.iloc[-1])
 
-        rsi_s = _rsi(close)
-        adx_s, pdi_s, ndi_s = _adx(high, low, close)
+        # Day before yesterday for comparison
+        cmp  = _sf(close.iloc[-1])   # last known close
+        prev = _sf(close.iloc[-2]) if len(close) >= 2 else cmp
+        chg_pct = _sf((cmp - prev) / prev * 100) if prev else None
 
-        l_rsi = _sf(rsi_s.iloc[-1])
-        l_adx = _sf(adx_s.iloc[-1])
-        avg20v = float(volume.rolling(20).mean().iloc[-1]) if len(volume) >= 20 else float(volume.mean())
-        vol_ratio = round(float(volume.iloc[-1]) / avg20v, 2) if avg20v > 0 else 0
+        # Gap from two-days-ago close to yesterday's open
+        gap_pct = _sf((pdo - prev) / prev * 100) if (prev and pdo) else None
 
-        # Weekly trend
-        wk_trend = _weekly_trend(df)
+        # ── Indicators ───────────────────────────────────────────────────────
+        atr14    = _atr(high, low, close, 14)
+        last_atr = _sf(atr14.iloc[-1])
+        atr_pct  = _sf(last_atr / cmp * 100) if (last_atr and cmp) else None
 
-        # Daily trend
-        ema_aligned = lc > le20 > le50 > le200
-        if lc > le20 > le50 > le200:
-            daily_trend = "STRONG_BULL"
-        elif lc > le200:
-            daily_trend = "BULL"
-        elif lc < le200:
-            daily_trend = "BEAR"
-        else:
-            daily_trend = "NEUTRAL"
+        avg20v   = float(volume.rolling(20).mean().iloc[-1]) if len(volume) >= 20 else float(volume.mean())
+        avg20v_l = round(avg20v / 100_000, 1)      # in lakhs
 
-        # 52W stats
-        h52 = float(high.iloc[-252:].max() if len(high) >= 252 else high.max())
-        l52 = float(low.iloc[-252:].min()  if len(low)  >= 252 else low.min())
-        dist_52wh = round((lc - h52) / h52 * 100, 1)
+        # 20-day VWAP proxy
+        tp      = (high + low + close) / 3
+        vwap_20 = _sf((tp * volume).rolling(20).sum().iloc[-1] /
+                      volume.rolling(20).sum().iloc[-1])
 
-        # Daily volume value
-        avg_val_cr = round(avg20v * lc / 1e7, 1)
+        rsi_val = _sf(_rsi(close).iloc[-1])
+        e9      = _sf(_ema(close, 9).iloc[-1])
+        e21     = _sf(_ema(close, 21).iloc[-1])
 
-        # Distance from nearest breakout zone (recent 10d high)
-        recent_high = float(high.iloc[-10:].max())
-        dist_breakout = round((lc - recent_high) / recent_high * 100, 1)
+        # ── Weekly Pivot Levels ───────────────────────────────────────────────
+        wk = df.resample("W").agg({"High": "max", "Low": "min", "Close": "last"})
+        wk_pivot = wk_r1 = wk_s1 = wk_r2 = wk_s2 = None
+        if len(wk) >= 2:
+            wh = float(wk["High"].iloc[-2])
+            wl = float(wk["Low"].iloc[-2])
+            wc = float(wk["Close"].iloc[-2])
+            p  = (wh + wl + wc) / 3
+            wk_pivot = _sf(p)
+            wk_r1    = _sf(2 * p - wl)
+            wk_s1    = _sf(2 * p - wh)
+            wk_r2    = _sf(p + (wh - wl))
+            wk_s2    = _sf(p - (wh - wl))
 
-        # 1-day change
-        chg_pct = round((lc - float(close.iloc[-2])) / float(close.iloc[-2]) * 100, 2) if len(close) >= 2 else None
+        # ── Qualification ─────────────────────────────────────────────────────
+        qual_atr    = atr_pct is not None and atr_pct >= 1.5
+        qual_vol    = avg20v >= 5_000_000          # 50 lakh shares
+        qualified   = qual_atr and qual_vol
 
-        # Detect setups
-        setups = _detect_setups(df, sector_rank)
+        # VWAP deviation
+        vwap_dev_pct = _sf((cmp - vwap_20) / vwap_20 * 100) if vwap_20 else None
 
-        # Bullish screening score (for sorting)
-        score = 0
-        if ema_aligned:             score += 30
-        if l_rsi and 55 <= l_rsi <= 75: score += 20
-        if vol_ratio >= 1.5:        score += 15
-        if l_adx and l_adx >= 25:   score += 15
-        if wk_trend == "BULL":      score += 10
-        if len(setups) > 0:         score += 10 * len(setups)
+        # ── Setup Detection ───────────────────────────────────────────────────
+        setups = []
+
+        if pdh and pdl and cmp and vwap_20:
+
+            # ORB Long: CMP within 2% above PDH  →  potential upside breakout
+            if 0 <= (cmp - pdh) / pdh * 100 <= 2.0 and cmp > vwap_20 and e9 and cmp >= e9:
+                entry = _sf(pdh * 1.002)
+                sl    = _sf(min(vwap_20, pdh * 0.995))
+                risk  = max((entry - sl), 0.01) if (entry and sl) else 1
+                setups.append({
+                    "setup": "ORB_LONG", "setup_label": "ORB Long",
+                    "icon": "🟢", "window": "9:30–10:15 AM",
+                    "entry": entry, "stop_loss": sl,
+                    "target1": _sf(entry + risk * 2),
+                    "target2": _sf(entry + risk * 3),
+                    "note": f"Break above PDH ₹{pdh} · VWAP ₹{vwap_20} support · 9 EMA aligned",
+                    "rr": "1:2 / 1:3",
+                })
+
+            # ORB Short: CMP within 2% below PDL  →  potential breakdown
+            if 0 <= (pdl - cmp) / pdl * 100 <= 2.0 and cmp < vwap_20 and e9 and cmp <= e9:
+                entry = _sf(pdl * 0.998)
+                sl    = _sf(max(vwap_20, pdl * 1.005))
+                risk  = max((sl - entry), 0.01) if (entry and sl) else 1
+                setups.append({
+                    "setup": "ORB_SHORT", "setup_label": "ORB Short",
+                    "icon": "🔴", "window": "9:30–10:15 AM",
+                    "entry": entry, "stop_loss": sl,
+                    "target1": _sf(entry - risk * 2),
+                    "target2": _sf(entry - risk * 3),
+                    "note": f"Break below PDL ₹{pdl} · VWAP ₹{vwap_20} resistance · 9 EMA below",
+                    "rr": "1:2 / 1:3",
+                })
+
+            # VWAP Reversion Long: price > 1.5% below VWAP + RSI oversold
+            if vwap_dev_pct is not None and vwap_dev_pct <= -1.5 and rsi_val and rsi_val < 38:
+                swing_low = _sf(low.iloc[-5:].min())
+                sl   = _sf(swing_low * 0.99) if swing_low else _sf(cmp * 0.985)
+                risk = max(cmp - sl, 0.01) if sl else 1
+                setups.append({
+                    "setup": "VWAP_REVERSION_LONG", "setup_label": "VWAP Reversion ↑",
+                    "icon": "↩️", "window": "Any (not 11:30–12:30)",
+                    "entry": cmp, "stop_loss": sl,
+                    "target1": vwap_20,
+                    "target2": _sf(vwap_20 + abs(vwap_dev_pct / 100 * vwap_20) * 0.5),
+                    "note": f"{abs(vwap_dev_pct):.1f}% below VWAP · RSI {rsi_val:.0f} oversold · Scalp to VWAP",
+                    "rr": "VWAP target",
+                })
+
+            # VWAP Reversion Short: price > 1.5% above VWAP + RSI overbought
+            if vwap_dev_pct is not None and vwap_dev_pct >= 1.5 and rsi_val and rsi_val > 62:
+                swing_hi = _sf(high.iloc[-5:].max())
+                sl   = _sf(swing_hi * 1.01) if swing_hi else _sf(cmp * 1.015)
+                risk = max(sl - cmp, 0.01) if sl else 1
+                setups.append({
+                    "setup": "VWAP_REVERSION_SHORT", "setup_label": "VWAP Reversion ↓",
+                    "icon": "↪️", "window": "Any (not 11:30–12:30)",
+                    "entry": cmp, "stop_loss": sl,
+                    "target1": vwap_20,
+                    "target2": _sf(vwap_20 - abs(vwap_dev_pct / 100 * vwap_20) * 0.5),
+                    "note": f"{vwap_dev_pct:.1f}% above VWAP · RSI {rsi_val:.0f} overbought · Scalp to VWAP",
+                    "rr": "VWAP target",
+                })
+
+        # Gap plays (based on yesterday's open vs close-before)
+        if gap_pct is not None and pdh and pdl and pdc:
+            if gap_pct >= 0.8:
+                sl  = _sf(prev)  # gap fill = bearish reversal level
+                risk = max(pdo - sl, 0.01) if (pdo and sl) else 1
+                setups.append({
+                    "setup": "GAP_UP", "setup_label": f"Gap Up +{gap_pct:.1f}%",
+                    "icon": "⬆️", "window": "9:15–9:30 (observe), enter 9:30+",
+                    "entry": _sf(pdo * 1.001), "stop_loss": sl,
+                    "target1": _sf(pdo + risk * 2),
+                    "target2": _sf(pdo + risk * 3),
+                    "note": f"Opened ₹{pdo} vs prev close ₹{prev} · Watch ORB on gap · SL = gap fill",
+                    "rr": "1:2 if ORB holds",
+                })
+            elif gap_pct <= -0.8:
+                sl  = _sf(prev)
+                risk = max(sl - pdo, 0.01) if (pdo and sl) else 1
+                setups.append({
+                    "setup": "GAP_DOWN", "setup_label": f"Gap Down {gap_pct:.1f}%",
+                    "icon": "⬇️", "window": "9:15–9:30 (observe), enter 9:30+",
+                    "entry": _sf(pdo * 0.999), "stop_loss": sl,
+                    "target1": _sf(pdo - risk * 2),
+                    "target2": _sf(pdo - risk * 3),
+                    "note": f"Opened ₹{pdo} vs prev close ₹{prev} · Short if gap doesn't fill · SL = gap fill",
+                    "rr": "1:2 if breakdown holds",
+                })
+
+        # Sort: directional ORB first
+        order = ["ORB_LONG", "ORB_SHORT", "GAP_UP", "GAP_DOWN",
+                 "VWAP_REVERSION_LONG", "VWAP_REVERSION_SHORT"]
+        setups.sort(key=lambda x: order.index(x["setup"]) if x["setup"] in order else 99)
+
+        # Trend label
+        above_vwap = cmp > vwap_20 if (cmp and vwap_20) else None
+        ema_bullish = (e9 and e21 and e9 > e21 and cmp >= e9)
 
         return {
-            "symbol":         sym.replace(".NS", "").replace(".BO", ""),
-            "raw_symbol":     sym,
-            "name":           info.get("name", sym),
-            "sector":         info.get("sector", "—"),
-            "cmp":            round(lc, 2),
-            "chg_pct":        chg_pct,
-            "weekly_trend":   wk_trend,
-            "daily_trend":    daily_trend,
-            "ema_aligned":    ema_aligned,
-            "ema20":          round(le20, 2),
-            "ema50":          round(le50, 2),
-            "ema200":         round(le200, 2),
-            "rsi_14":         l_rsi,
-            "adx_14":         l_adx,
-            "vol_ratio":      vol_ratio,
-            "avg_val_cr":     avg_val_cr,
-            "w52_high":       round(h52, 2),
-            "w52_low":        round(l52, 2),
-            "dist_52wh":      dist_52wh,
-            "dist_breakout":  dist_breakout,
-            "sector_rank":    sector_rank,
-            "setups":         setups,
-            "setup_count":    len(setups),
-            "has_setup":      len(setups) > 0,
-            "score":          score,
+            "symbol":        sym.replace(".NS", ""),
+            "raw_symbol":    sym,
+            "name":          info.get("name", sym),
+            "sector":        info.get("sector", "—"),
+            "cmp":           cmp,
+            "chg_pct":       chg_pct,
+            "gap_pct":       gap_pct,
+            # Key levels
+            "pdh":           pdh,
+            "pdl":           pdl,
+            "pdc":           pdc,
+            "vwap_20":       vwap_20,
+            "vwap_dev_pct":  vwap_dev_pct,
+            "wk_pivot":      wk_pivot,
+            "wk_r1":         wk_r1,
+            "wk_s1":         wk_s1,
+            "wk_r2":         wk_r2,
+            "wk_s2":         wk_s2,
+            # Indicators
+            "atr_14":        last_atr,
+            "atr_pct":       atr_pct,
+            "avg_vol_l":     avg20v_l,
+            "rsi_14":        rsi_val,
+            "ema9":          e9,
+            "ema21":         e21,
+            # Status
+            "above_vwap":    above_vwap,
+            "ema_bullish":   ema_bullish,
+            "qualified":     qualified,
+            "qual_atr":      qual_atr,
+            "qual_vol":      qual_vol,
+            # Setups
+            "setups":        setups,
+            "setup_count":   len(setups),
+            "has_setup":     len(setups) > 0,
         }
     except Exception as e:
-        logger.warning(f"IntraContra process_stock({sym}) error: {e}")
+        logger.warning(f"IntraContra({sym}): {e}")
         return None
 
 
 # ─── Market Context ───────────────────────────────────────────────────────────
 
 def _market_context() -> dict:
-    """Nifty weekly + daily trend, VIX, Nifty change."""
     ctx = {
-        "nifty_price":      None,
-        "nifty_chg_pct":    None,
-        "nifty_weekly":     "UNKNOWN",
-        "nifty_daily":      "UNKNOWN",
-        "nifty_ema20":      None,
-        "nifty_ema50":      None,
-        "nifty_rsi":        None,
-        "nifty_adx":        None,
-        "vix_value":        None,
-        "vix_status":       "UNKNOWN",
-        "trade_bias":       "NEUTRAL",
-        "trade_bias_color": "yellow",
+        "nifty_price": None, "nifty_chg_pct": None,
+        "nifty_pdh": None, "nifty_pdl": None,
+        "nifty_vwap": None, "nifty_rsi": None,
+        "vix_value": None, "vix_status": "UNKNOWN",
+        "trade_bias": "NEUTRAL", "trade_bias_color": "yellow",
     }
     try:
-        t  = yf.Ticker("^NSEI")
-        df = t.history(period="1y", auto_adjust=True)
-        if df is not None and len(df) >= 50:
-            df = df.dropna(subset=["Close"]).sort_index()
-            close = df["Close"]
-            high  = df["High"]
-            low   = df["Low"]
-
-            lc     = float(close.iloc[-1])
-            le20   = float(_ema(close, 20).iloc[-1])
-            le50   = float(_ema(close, 50).iloc[-1])
-            l_rsi  = _sf(_rsi(close).iloc[-1])
-            adx_s, _, _ = _adx(high, low, close)
-            l_adx  = _sf(adx_s.iloc[-1])
-
+        df = yf.Ticker("^NSEI").history(period="3mo", auto_adjust=True).dropna(subset=["Close"]).sort_index()
+        if len(df) >= 10:
+            close = df["Close"]; high = df["High"]; low = df["Low"]
+            lc   = float(close.iloc[-1])
+            prev = float(close.iloc[-2])
+            tp   = (high + low + close) / 3
+            vol  = df.get("Volume", pd.Series(1, index=df.index))
+            vwap = _sf((tp * vol).rolling(20).sum().iloc[-1] / vol.rolling(20).sum().iloc[-1])
             ctx.update({
-                "nifty_price":  round(lc, 2),
-                "nifty_ema20":  round(le20, 2),
-                "nifty_ema50":  round(le50, 2),
-                "nifty_rsi":    l_rsi,
-                "nifty_adx":    l_adx,
+                "nifty_price":   _sf(lc),
+                "nifty_chg_pct": _sf((lc - prev) / prev * 100),
+                "nifty_pdh":     _sf(float(high.iloc[-1])),
+                "nifty_pdl":     _sf(float(low.iloc[-1])),
+                "nifty_vwap":    vwap,
+                "nifty_rsi":     _sf(_rsi(close).iloc[-1]),
             })
-            if len(close) >= 2:
-                prev = float(close.iloc[-2])
-                ctx["nifty_chg_pct"] = round((lc - prev) / prev * 100, 2)
-
-            ctx["nifty_weekly"] = _weekly_trend(df)
-            ctx["nifty_daily"]  = ("STRONG_BULL" if lc > le20 > le50
-                                   else "BULL" if lc > le50
-                                   else "BEAR")
+            if vwap:
+                bias = "LONG" if lc > vwap else "CAUTION"
+                col  = "green" if lc > vwap else "red"
+                ctx.update({"trade_bias": bias, "trade_bias_color": col})
     except Exception as e:
-        logger.warning(f"Nifty context error: {e}")
-
+        logger.warning(f"Market context error: {e}")
     try:
         vdf = yf.Ticker("^INDIAVIX").history(period="1mo", auto_adjust=True)
         if vdf is not None and not vdf.empty:
-            vv = _sf(vdf["Close"].iloc[-1])
-            ctx["vix_value"] = vv
-            ctx["vix_status"] = ("LOW" if vv and vv < 18 else
-                                 "ELEVATED" if vv and vv <= 22 else
-                                 "HIGH")
+            vv = _sf(vdf["Close"].dropna().iloc[-1])
+            ctx["vix_value"]  = vv
+            ctx["vix_status"] = ("LOW" if vv and vv < 13 else
+                                  "MODERATE" if vv and vv <= 18 else
+                                  "ELEVATED" if vv and vv <= 22 else "HIGH")
     except Exception as e:
-        logger.warning(f"VIX context error: {e}")
-
-    # Trade bias
-    w = ctx["nifty_weekly"]
-    d = ctx["nifty_daily"]
-    v = ctx["vix_status"]
-    if w == "BULL" and d in ("BULL", "STRONG_BULL") and v in ("LOW", "ELEVATED"):
-        ctx.update({"trade_bias": "LONG",    "trade_bias_color": "green"})
-    elif w == "BEAR" or d == "BEAR" or v == "HIGH":
-        ctx.update({"trade_bias": "CAUTION", "trade_bias_color": "red"})
-    else:
-        ctx.update({"trade_bias": "NEUTRAL", "trade_bias_color": "yellow"})
-
+        logger.warning(f"VIX error: {e}")
     return ctx
-
-
-# ─── Sector Rotation (reuse Sniper approach) ─────────────────────────────────
-
-SECTOR_INDICES = {
-    "^NSEBANK":    "Banking",
-    "^CNXIT":      "IT",
-    "^CNXPHARMA":  "Pharma",
-    "^CNXAUTO":    "Auto",
-    "^CNXREALTY":  "Realty",
-    "^CNXFMCG":    "FMCG",
-    "^CNXMETAL":   "Metals",
-    "^CNXINFRA":   "Infra",
-    "^CNXENERGY":  "Energy",
-    "^CNXFINANCE": "Finance",
-}
-
-UNIVERSE_TO_IDX = {
-    "Banking": "Banking", "IT": "IT", "Pharma": "Pharma",
-    "Healthcare": "Pharma", "Auto": "Auto", "Finance": "Finance",
-    "FMCG": "FMCG", "Consumer": "FMCG", "Energy": "Energy",
-    "Metals": "Metals", "Infra": "Infra", "Telecom": "Infra", "Media": "Infra",
-}
-
-
-def _sector_ranks() -> dict[str, int]:
-    """Return {idx_sector_name: rank} ordered by 4-week RS vs Nifty."""
-    try:
-        ndf = yf.Ticker("^NSEI").history(period="3mo", auto_adjust=True)
-        if ndf is None or len(ndf) < 21:
-            return {}
-        nc   = ndf["Close"].dropna()
-        n4w  = (float(nc.iloc[-1]) / float(nc.iloc[-21]) - 1) * 100
-
-        scores = {}
-        for sym, name in SECTOR_INDICES.items():
-            try:
-                df = yf.Ticker(sym).history(period="3mo", auto_adjust=True)
-                if df is None or len(df) < 21:
-                    continue
-                c   = df["Close"].dropna()
-                r4w = (float(c.iloc[-1]) / float(c.iloc[-21]) - 1) * 100
-                scores[name] = r4w - n4w
-            except Exception:
-                pass
-
-        ranked = sorted(scores, key=lambda k: scores[k], reverse=True)
-        return {name: i + 1 for i, name in enumerate(ranked)}
-    except Exception as e:
-        logger.warning(f"Sector ranks error: {e}")
-        return {}
 
 
 # ─── Main Entry Point ─────────────────────────────────────────────────────────
 
-def run_intra_contra(universe: dict) -> dict:
-    """Orchestrate market context + sector ranks + full NIFTY 100 scan."""
+def run_intra_contra(_universe: dict = None) -> dict:
+    """Run pre-market analysis on the 20-stock curated watchlist."""
     try:
         logger.info("[IntraContra] Market context…")
         market_ctx = _market_context()
 
-        logger.info("[IntraContra] Sector ranks…")
-        sec_ranks = _sector_ranks()
-
-        logger.info("[IntraContra] Scanning %d stocks…", len(universe))
-
-        def _get_rank(info: dict) -> int:
-            u_sec  = info.get("sector", "")
-            mapped = UNIVERSE_TO_IDX.get(u_sec, u_sec)
-            return sec_ranks.get(u_sec, sec_ranks.get(mapped, 99))
-
+        logger.info("[IntraContra] Processing %d watchlist stocks…", len(IC_WATCHLIST))
         results = []
         with ThreadPoolExecutor(max_workers=8) as ex:
-            futs = {
-                ex.submit(_process_stock, sym, info, _get_rank(info)): sym
-                for sym, info in universe.items()
-            }
+            futs = {ex.submit(_process_stock, sym, info): sym
+                    for sym, info in IC_WATCHLIST.items()}
             for fut in as_completed(futs):
                 r = fut.result()
                 if r is not None:
                     results.append(r)
 
-        # Sort: most setups → highest score → EMA aligned first
-        results.sort(key=lambda x: (-x["setup_count"], -x["score"]))
+        results.sort(key=lambda x: (-x["setup_count"], -int(x["qualified"]),
+                                    x["symbol"]))
 
-        # Summary
-        total     = len(results)
-        w_setups  = sum(1 for s in results if s["has_setup"])
-        flag_pole = sum(1 for s in results for st in s["setups"] if st["setup"] == "FLAG_POLE")
-        ema_pb    = sum(1 for s in results for st in s["setups"] if st["setup"] == "EMA_PULLBACK")
-        hi_bo     = sum(1 for s in results for st in s["setups"] if st["setup"] == "HIGH_BREAKOUT")
-        sec_rot   = sum(1 for s in results for st in s["setups"] if st["setup"] == "SECTOR_ROTATION")
-        aligned   = sum(1 for s in results if s["ema_aligned"])
-
-        # RSI quality zone
-        rsi_ok = sum(1 for s in results
-                     if s["rsi_14"] is not None and 55 <= s["rsi_14"] <= 75)
+        total      = len(results)
+        qualified  = sum(1 for s in results if s["qualified"])
+        w_setups   = sum(1 for s in results if s["has_setup"])
+        orb_long   = sum(1 for s in results for st in s["setups"] if st["setup"] == "ORB_LONG")
+        orb_short  = sum(1 for s in results for st in s["setups"] if st["setup"] == "ORB_SHORT")
+        vwap_rev   = sum(1 for s in results for st in s["setups"]
+                         if st["setup"] in ("VWAP_REVERSION_LONG", "VWAP_REVERSION_SHORT"))
+        gap_plays  = sum(1 for s in results for st in s["setups"]
+                         if st["setup"] in ("GAP_UP", "GAP_DOWN"))
+        above_vwap = sum(1 for s in results if s.get("above_vwap"))
 
         return {
             "status":         "success",
             "run_date":       datetime.now().strftime("%Y-%m-%d"),
             "run_time":       datetime.now().strftime("%H:%M:%S"),
             "market_context": market_ctx,
-            "sector_ranks":   sec_ranks,
             "stocks":         results,
             "summary": {
-                "total":           total,
-                "with_setups":     w_setups,
-                "ema_aligned":     aligned,
-                "rsi_quality":     rsi_ok,
-                "flag_pole":       flag_pole,
-                "ema_pullback":    ema_pb,
-                "high_breakout":   hi_bo,
-                "sector_rotation": sec_rot,
+                "total":       total,
+                "qualified":   qualified,
+                "with_setups": w_setups,
+                "orb_long":    orb_long,
+                "orb_short":   orb_short,
+                "vwap_rev":    vwap_rev,
+                "gap_plays":   gap_plays,
+                "above_vwap":  above_vwap,
             },
         }
     except Exception as e:
