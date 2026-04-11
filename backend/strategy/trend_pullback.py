@@ -59,6 +59,19 @@ SECTOR_CALENDAR = {
 }
 
 
+# ─── Base Breakout Quality Thresholds ────────────────────────────────────────
+# Institutional-grade criteria (Minervini VCP / O'Neil Cup-with-Handle).
+# These are intentionally strict — false base breakouts are the single most
+# common reason trend-following systems underperform: the stock "breaks out"
+# of a loose consolidation, gets chased, then mean-reverts.
+_BASE_RANGE_TIGHT    = 0.06   # < 6%: VCP-grade tight base (best setups)
+_BASE_RANGE_MAX      = 0.08   # ≥ 8%: reject outright (was 0.12 — far too loose)
+_BASE_VOL_MIN        = 2.0    # breakout-day volume must be ≥ 2× 20-day avg (was 1.5×)
+_BASE_CLOSE_STR_MIN  = 0.60   # breakout bar must close in top 60% of its range
+_BASE_CONTRACTION    = 0.85   # last-half range must be < 85% of first-half range
+                               # (price volatility must be compressing, not flat-noisy)
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _sf(val, default=None, decimals=2):
@@ -311,37 +324,66 @@ def _detect_patterns(df: pd.DataFrame) -> list:
                     })
 
     # ── Pattern 2: Base Breakout ──────────────────────────────────────────────
+    # Institutional-grade VCP criteria (Minervini/O'Neil):
+    #   - Base range < 8%  (not 12%); best setups < 6%
+    #   - Volume ≥ 2× average on breakout day (not 1.5×)
+    #   - Closing strength: bar must close in top 60% of its own range
+    #   - Range contraction: last-half base narrower than first-half (tightening)
     lookback = 30   # ~6 weeks
     if len(close) >= lookback + 5:
-        base_h = float(high.iloc[-(lookback+5):-5].max())
-        base_l = float(low.iloc[-(lookback+5):-5].min())
+        base_slice_h = high.iloc[-(lookback+5):-5]
+        base_slice_l = low.iloc[-(lookback+5):-5]
+        base_h = float(base_slice_h.max())
+        base_l = float(base_slice_l.min())
         base_range_pct = (base_h - base_l) / base_l if base_l > 0 else 99
 
-        if base_range_pct < 0.12 and lc > base_h:          # tight base + breakout
+        if base_range_pct < _BASE_RANGE_MAX and lc > base_h:
             vol_ratio = last_v / avg20v if avg20v > 0 else 0
-            if vol_ratio >= 1.5:
+
+            # Closing strength: how far into the day's range did we close?
+            day_range = float(high.iloc[-1]) - float(low.iloc[-1])
+            close_str = (lc - float(low.iloc[-1])) / day_range if day_range > 0 else 0.5
+
+            # Range contraction: split base into two halves, compare ranges
+            half = len(base_slice_h) // 2
+            first_half_range = (float(base_slice_h.iloc[:half].max())
+                                - float(base_slice_l.iloc[:half].min()))
+            last_half_range  = (float(base_slice_h.iloc[half:].max())
+                                - float(base_slice_l.iloc[half:].min()))
+            range_contracting = (last_half_range < first_half_range * _BASE_CONTRACTION
+                                 if first_half_range > 0 else False)
+
+            if (vol_ratio >= _BASE_VOL_MIN
+                    and close_str >= _BASE_CLOSE_STR_MIN
+                    and range_contracting):
+
+                base_quality = "TIGHT" if base_range_pct < _BASE_RANGE_TIGHT else "GOOD"
                 stop  = round(base_h * 0.98, 2)
                 entry = round(lc, 2)
                 risk  = max(entry - stop, 0.01)
                 t1, t2, t3 = (round(entry + risk * m, 2) for m in (2, 3, 4))
 
                 patterns.append({
-                    "pattern":        "BASE_BREAKOUT",
-                    "pattern_label":  "Base Breakout",
-                    "pattern_icon":   "🚀",
-                    "entry":          entry,
-                    "stop_loss":      stop,
-                    "target1":        t1,
-                    "target2":        t2,
-                    "target3":        t3,
-                    "rr_t1":          round(risk * 2 / risk, 1),
-                    "rr_t2":          round(risk * 3 / risk, 1),
-                    "note":           (f"{lookback}d base "
-                                       f"({round(base_range_pct*100,1)}% range), "
-                                       f"vol {round(vol_ratio,1)}x avg"),
-                    "base_high":      round(base_h, 2),
-                    "base_low":       round(base_l, 2),
-                    "vol_ratio":      round(vol_ratio, 2),
+                    "pattern":         "BASE_BREAKOUT",
+                    "pattern_label":   "Base Breakout",
+                    "pattern_icon":    "🚀",
+                    "entry":           entry,
+                    "stop_loss":       stop,
+                    "target1":         t1,
+                    "target2":         t2,
+                    "target3":         t3,
+                    "rr_t1":           round(risk * 2 / risk, 1),
+                    "rr_t2":           round(risk * 3 / risk, 1),
+                    "note":            (f"{lookback}d {base_quality} base "
+                                        f"({round(base_range_pct*100,1)}% range), "
+                                        f"vol {round(vol_ratio,1)}x avg, "
+                                        f"close str {round(close_str*100,0):.0f}%"),
+                    "base_high":       round(base_h, 2),
+                    "base_low":        round(base_l, 2),
+                    "base_quality":    base_quality,
+                    "vol_ratio":       round(vol_ratio, 2),
+                    "close_str_pct":   round(close_str * 100, 1),
+                    "range_contracting": range_contracting,
                     "scale_out_50pct": round(entry + risk * 2, 2),
                     "trail_stop":      round(float(_ema(close, 10).iloc[-1]), 2),
                 })

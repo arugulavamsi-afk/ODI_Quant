@@ -20,7 +20,7 @@ from data.fetcher import fetch_all_stocks, fetch_global_data
 from data.universe import STOCK_UNIVERSE
 from signals.signal_engine import generate_signals
 from scoring.scorer import calculate_long_score, calculate_short_score
-from sentiment.global_sentiment import calculate_global_score
+from sentiment.global_sentiment import calculate_global_score, get_sector_adjustment
 from risk.risk_engine import calculate_trade_levels
 from ranking.ranker import classify_stock, rank_stocks, generate_explanation
 from storage.db import initialize_db, save_results
@@ -117,9 +117,7 @@ def run_daily_pipeline(universe: dict = None) -> dict:
     logger.info("Fetching global market data...")
     global_data = fetch_global_data()
     global_sentiment = calculate_global_score(global_data)
-    long_adj = global_sentiment.get("long_adjustment", 0)
-    short_adj = global_sentiment.get("short_adjustment", 0)
-    logger.info(f"Global sentiment: {global_sentiment['classification']} (score: {global_sentiment['score']:+.1f})")
+    logger.info(f"Global sentiment: {global_sentiment['classification']} (score: {global_sentiment['score']:+.1f}, crude: {global_sentiment.get('crude_contribution', 0):+.1f})")
 
     # Step 2: Fetch all stock data
     logger.info(f"Fetching EOD data for {len(universe)} stocks...")
@@ -148,16 +146,24 @@ def run_daily_pipeline(universe: dict = None) -> dict:
             long_signal = signal_result["long_signal"]
             short_signal = signal_result["short_signal"]
 
-            # Calculate scores with global sentiment adjustment
-            long_score = calculate_long_score(indicators, long_signal, long_adj)
+            # Calculate scores with sector-aware sentiment adjustment.
+            # Oil-beneficiary sectors (ONGC, GAIL, BPCL…) get the crude component
+            # reversed so rising crude is correctly treated as a tailwind for them.
+            long_adj, short_adj = get_sector_adjustment(global_sentiment, sector)
+            long_score  = calculate_long_score(indicators, long_signal, long_adj)
             short_score = calculate_short_score(indicators, short_signal, short_adj)
 
-            # Classify
-            classification = classify_stock(long_score, short_score)
-            direction = classification["direction"]
+            # Preliminary direction (scores only, no SL check yet) to know which
+            # side to compute trade levels for before final classification.
+            _pre_direction = "LONG" if long_score >= short_score else "SHORT"
 
-            # Risk levels (pass atr from indicators as fallback in case df lacks ATR column)
-            trade_levels = calculate_trade_levels(df, direction, atr_value=indicators.get("atr"))
+            # Risk levels — computed before classify so sl_too_wide feeds into tier
+            trade_levels = calculate_trade_levels(df, _pre_direction, atr_value=indicators.get("atr"))
+            sl_too_wide  = trade_levels.get("sl_too_wide", False)
+
+            # Classify — demotes one tier when the natural SL is > 2%
+            classification = classify_stock(long_score, short_score, sl_too_wide=sl_too_wide)
+            direction = classification["direction"]
 
             # Explanation
             explanation = generate_explanation(

@@ -9,8 +9,20 @@ EMPIRE scoring (available from yfinance):
   M — Moat Proxy        : Operating margin stability
   P — Promoter Proxy    : Revenue growth consistency
   I — Industry (fixed)  : Curated universe = industry tailwind assumed
-  R — Runway            : Market cap size (smaller = more runway)
-  E — Entry Price       : PEG < 1.5, P/E relative
+  R — Runway            : Debt/Equity ratio
+  E — Entry Price       : PEG ratio
+
+Valuation gates (applied AFTER EMPIRE score, overrides tier):
+  PE > 80 → forced Tier-3 (Watchlist). Quality at this price is speculation —
+            a 20% EPS miss triggers a 40–60% re-rating. No portfolio allocation.
+  PE > 60 → capped at Tier-2 max. The margin of safety is too thin for a
+            concentrated 8–12% position regardless of EMPIRE score.
+  PE ≤ 60 → tier follows EMPIRE score as normal.
+
+These gates exist because EMPIRE rewards quality but is price-agnostic.
+A stock at 90× PE with great ROE still has 90× PE — the model needs a
+hard valuation floor so the portfolio is not overloaded into expensive
+quality names that de-rate 40–60% in corrections.
 """
 
 import logging
@@ -87,6 +99,13 @@ BB_UNIVERSE = {
 }
 
 FINANCIAL_SECTORS = {"Private Banks", "NBFC", "Insurance", "AMC/Wealth", "Broking"}
+
+# ─── Valuation Gates ──────────────────────────────────────────────────────────
+# Applied AFTER the EMPIRE quality score. EMPIRE is price-agnostic; these gates
+# ensure the portfolio is never concentrated in stocks where the valuation itself
+# is the primary risk, regardless of how strong the underlying business is.
+_PE_TIER1_MAX = 60   # PE above this → demote Tier-1 → Tier-2 (too rich for 8-12% sizing)
+_PE_HARD_CAP  = 80   # PE above this → force Tier-3 regardless of score (speculative premium)
 
 
 def _sf(val, d=2):
@@ -191,13 +210,72 @@ def _empire_score(info: dict, is_financial: bool) -> tuple:
     return score, possible, breakdown
 
 
-def _conviction_tier(score: float) -> tuple:
+def _conviction_tier(score: float, pe: float | None = None) -> tuple:
+    """
+    Returns (tier, label, color, valuation_flag, valuation_note).
+
+    valuation_flag values:
+      None           — no valuation concern
+      "PE_CAPPED"    — PE > 60; would be Tier-1 on quality alone, capped to Tier-2
+      "PE_OVERVALUED"— PE > 80; forced to Tier-3 regardless of EMPIRE score
+    """
+    # Step 1: quality-only tier from EMPIRE score
     if score >= 70:
-        return "TIER_1", "Tier 1 · 8–12%",  "#eab308"
+        base_tier = "TIER_1"
     elif score >= 50:
-        return "TIER_2", "Tier 2 · 4–6%",   "#4a9eff"
+        base_tier = "TIER_2"
     else:
-        return "TIER_3", "Watchlist · 2–3%", "#888"
+        base_tier = "TIER_3"
+
+    # Step 2: valuation gate — override tier when PE is available and stretched
+    valuation_flag = None
+    valuation_note = None
+
+    if pe is not None:
+        if pe > _PE_HARD_CAP:
+            # Absolute ceiling: forced Watchlist regardless of quality score.
+            # At 80×+ PE, even a single quarter of earnings miss triggers a
+            # 30–50% de-rating. No concentrated position is justified.
+            valuation_flag = "PE_OVERVALUED"
+            valuation_note = (
+                f"PE {pe:.0f}× exceeds hard cap of {_PE_HARD_CAP}×. "
+                f"Forced to Watchlist. Add to portfolio only on significant correction "
+                f"(target entry PE < {_PE_TIER1_MAX}×)."
+            )
+            base_tier = "TIER_3"
+
+        elif pe > _PE_TIER1_MAX and base_tier == "TIER_1":
+            # Soft cap: strong quality but price is stretched for a concentrated hold.
+            # Tier-2 allocation (4–6%) is still appropriate — just not 8–12%.
+            valuation_flag = "PE_CAPPED"
+            valuation_note = (
+                f"PE {pe:.0f}× exceeds Tier-1 ceiling of {_PE_TIER1_MAX}×. "
+                f"EMPIRE quality is strong but margin of safety is thin at this price. "
+                f"Capped at Tier-2 (4–6%) until PE contracts below {_PE_TIER1_MAX}×."
+            )
+            base_tier = "TIER_2"
+
+    # Step 3: build display labels
+    tier = base_tier
+    if tier == "TIER_1":
+        label = "Tier 1 · 8–12%"
+        color = "#eab308"
+    elif tier == "TIER_2":
+        if valuation_flag == "PE_CAPPED":
+            label = f"Tier 2 · 4–6% · PE>{_PE_TIER1_MAX}×"
+            color = "#f97316"   # orange — quality but expensive
+        else:
+            label = "Tier 2 · 4–6%"
+            color = "#4a9eff"
+    else:
+        if valuation_flag == "PE_OVERVALUED":
+            label = f"Watchlist · PE>{_PE_HARD_CAP}×"
+            color = "#ef4444"   # red — overvalued
+        else:
+            label = "Watchlist · 2–3%"
+            color = "#888"
+
+    return tier, label, color, valuation_flag, valuation_note
 
 
 def _process_bb_stock(sym: str, meta: dict) -> dict | None:
@@ -242,7 +320,10 @@ def _process_bb_stock(sym: str, meta: dict) -> dict | None:
         is_fin = meta.get("fin", False) or meta.get("sector") in FINANCIAL_SECTORS
 
         empire_score, empire_possible, empire_bd = _empire_score(info, is_fin)
-        conviction, conv_label, conv_color = _conviction_tier(empire_score)
+        # Pass PE into conviction tier so valuation gates are applied before allocation
+        conviction, conv_label, conv_color, val_flag, val_note = _conviction_tier(
+            empire_score, pe=pe
+        )
 
         return {
             "symbol":         sym.replace(".NS", "").replace("^", ""),
@@ -275,6 +356,9 @@ def _process_bb_stock(sym: str, meta: dict) -> dict | None:
             "conviction":     conviction,
             "conviction_label": conv_label,
             "conviction_color": conv_color,
+            # Valuation gate result — None if no gate triggered
+            "valuation_flag": val_flag,
+            "valuation_note": val_note,
         }
     except Exception as e:
         logger.warning("BigBag(%s): %s", sym, e)
@@ -297,14 +381,16 @@ def run_bigbag(_universe: dict = None) -> dict:
 
         results.sort(key=lambda x: (-x["empire_score"], x["symbol"]))
 
-        total    = len(results)
-        tier1    = sum(1 for s in results if s["conviction"] == "TIER_1")
-        tier2    = sum(1 for s in results if s["conviction"] == "TIER_2")
-        high_roe = sum(1 for s in results if s["roe"] and s["roe"] >= 20)
-        low_de   = sum(1 for s in results if not s["is_financial"] and
-                       s["de_ratio"] is not None and s["de_ratio"] < 0.3)
-        good_peg = sum(1 for s in results if s["peg"] and s["peg"] < 1.5)
-        near_52wh= sum(1 for s in results if s["dist_52wh"] is not None and s["dist_52wh"] >= -10)
+        total       = len(results)
+        tier1       = sum(1 for s in results if s["conviction"] == "TIER_1")
+        tier2       = sum(1 for s in results if s["conviction"] == "TIER_2")
+        high_roe    = sum(1 for s in results if s["roe"] and s["roe"] >= 20)
+        low_de      = sum(1 for s in results if not s["is_financial"] and
+                          s["de_ratio"] is not None and s["de_ratio"] < 0.3)
+        good_peg    = sum(1 for s in results if s["peg"] and s["peg"] < 1.5)
+        near_52wh   = sum(1 for s in results if s["dist_52wh"] is not None and s["dist_52wh"] >= -10)
+        pe_capped   = sum(1 for s in results if s["valuation_flag"] == "PE_CAPPED")
+        pe_gated    = sum(1 for s in results if s["valuation_flag"] == "PE_OVERVALUED")
 
         return {
             "status":   "success",
@@ -312,13 +398,15 @@ def run_bigbag(_universe: dict = None) -> dict:
             "run_time": datetime.now().strftime("%H:%M:%S"),
             "stocks":   results,
             "summary": {
-                "total":     total,
-                "tier1":     tier1,
-                "tier2":     tier2,
-                "high_roe":  high_roe,
-                "low_de":    low_de,
-                "good_peg":  good_peg,
-                "near_52wh": near_52wh,
+                "total":      total,
+                "tier1":      tier1,
+                "tier2":      tier2,
+                "high_roe":   high_roe,
+                "low_de":     low_de,
+                "good_peg":   good_peg,
+                "near_52wh":  near_52wh,
+                "pe_capped":  pe_capped,   # Tier-1 quality but PE 60-80, held at Tier-2
+                "pe_gated":   pe_gated,    # Forced Watchlist: PE > 80
             },
         }
     except Exception as e:

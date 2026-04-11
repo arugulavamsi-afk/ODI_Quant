@@ -3,11 +3,31 @@ IntraContra — VWAP Momentum + Institutional Order Flow
 =======================================================
 Curated 20-stock watchlist of high-liquidity NSE/F&O names.
 Pre-market prep analysis using EOD daily data:
-  • Key levels  — PDH / PDL / PDC / Weekly Pivot / R1 / S1
-  • VWAP proxy  — 20-day rolling typical-price × volume VWAP
-  • Indicators  — ATR(14), RSI(14), 9 EMA, 21 EMA
-  • Setups      — ORB Long/Short, VWAP Reversion, Gap Play
-  • Sizing      — 2-tier risk system (1% / 2% / 0.5%)
+  • Key levels    — PDH / PDL / PDC / Weekly Pivot / R1 / S1
+  • Session TP    — (PDH + PDL + PDC) / 3 — prior session typical price.
+                    This is the EOD approximation of the session VWAP (the
+                    volume-weighted average price for that single day). It is
+                    the correct intraday anchor for mean-reversion setups.
+  • 20D VWAP      — 20-day rolling VWAP. Used ONLY as a swing trend reference
+                    (above = bullish swing bias, below = bearish). NOT used as
+                    an intraday entry/exit level — it resets too slowly.
+  • Indicators    — ATR(14), RSI(14), 9 EMA, 21 EMA
+  • Setups        — PDH Breakout / PDL Breakdown, Session TP Reversion, Gap Play
+  • Sizing        — 2-tier risk system (1% / 2% / 0.5%)
+
+DATA LIMITATION — NO TRUE ORB:
+  A genuine Opening Range Breakout (ORB) requires intraday 1-min or 5-min data
+  to define the high/low of the opening range (NSE regular session: 9:15 AM onward).
+  yfinance free tier does not reliably supply sub-daily historical data.
+
+  What this module computes instead:
+    PDH_BREAKOUT  — price is within 2% above PDH; watch for continuation above PDH at open.
+    PDL_BREAKDOWN — price is within 2% below PDL; watch for continuation below PDL at open.
+
+  These are EOD-level pre-market alerts, NOT live intraday signals.
+  The trader must verify the actual opening range and volume in the live session
+  before executing. Do not treat entry prices as pre-market limit orders —
+  they are reference levels requiring live confirmation at open.
 """
 
 import logging
@@ -116,10 +136,20 @@ def _process_stock(sym: str, info: dict) -> dict | None:
         avg20v   = float(volume.rolling(20).mean().iloc[-1]) if len(volume) >= 20 else float(volume.mean())
         avg20v_l = round(avg20v / 100_000, 1)      # in lakhs
 
-        # 20-day VWAP proxy
-        tp      = (high + low + close) / 3
-        vwap_20 = _sf((tp * volume).rolling(20).sum().iloc[-1] /
-                      volume.rolling(20).sum().iloc[-1])
+        # 20-day rolling VWAP — swing trend reference ONLY.
+        # Tells you whether the stock is in a bullish or bearish multi-day regime.
+        # DO NOT use as an intraday entry/exit anchor — it moves too slowly.
+        tp       = (high + low + close) / 3
+        vwap_20d = _sf((tp * volume).rolling(20).sum().iloc[-1] /
+                       volume.rolling(20).sum().iloc[-1])
+
+        # Prior Session Typical Price (Session TP) = (PDH + PDL + PDC) / 3
+        # This is the EOD approximation of the session VWAP — the price level
+        # where institutional volume centred during the prior trading session.
+        # It resets every session, making it the correct intraday mean-reversion
+        # anchor. Deviation from Session TP is what drives early-session reversions.
+        session_tp     = _sf((pdh + pdl + pdc) / 3) if (pdh and pdl and pdc) else None
+        session_tp_dev = _sf((cmp - session_tp) / session_tp * 100) if session_tp else None
 
         rsi_val = _sf(_rsi(close).iloc[-1])
         e9      = _sf(_ema(close, 9).iloc[-1])
@@ -144,72 +174,105 @@ def _process_stock(sym: str, info: dict) -> dict | None:
         qual_vol    = avg20v >= 5_000_000          # 50 lakh shares
         qualified   = qual_atr and qual_vol
 
-        # VWAP deviation
-        vwap_dev_pct = _sf((cmp - vwap_20) / vwap_20 * 100) if vwap_20 else None
-
         # ── Setup Detection ───────────────────────────────────────────────────
         setups = []
 
-        if pdh and pdl and cmp and vwap_20:
+        if pdh and pdl and cmp:
 
-            # ORB Long: CMP within 2% above PDH  →  potential upside breakout
-            if 0 <= (cmp - pdh) / pdh * 100 <= 2.0 and cmp > vwap_20 and e9 and cmp >= e9:
+            # PDH Breakout: CMP closed within 2% above PDH — bullish continuation setup.
+            # This is a pre-market alert, NOT a live ORB. A true ORB requires intraday
+            # 1-min/5-min data (NSE opens 9:15 AM) to define the opening range correctly.
+            # Using PDH as a proxy is reasonable for EOD prep but the trader must confirm:
+            #   (a) the opening range on the live session holds above PDH, and
+            #   (b) opening volume is strong before entering.
+            # Filter: swing bias bullish (CMP above 20D VWAP) + 9 EMA aligned.
+            # SL: 0.5% below PDH — intraday noise buffer. 20D VWAP NOT used as SL.
+            if 0 <= (cmp - pdh) / pdh * 100 <= 2.0 and vwap_20d and cmp > vwap_20d and e9 and cmp >= e9:
                 entry = _sf(pdh * 1.002)
-                sl    = _sf(min(vwap_20, pdh * 0.995))
+                sl    = _sf(pdh * 0.995)           # 0.5% below PDH — intraday noise buffer
                 risk  = max((entry - sl), 0.01) if (entry and sl) else 1
+                stp_note = f"Session TP ₹{session_tp}" if session_tp else ""
                 setups.append({
-                    "setup": "ORB_LONG", "setup_label": "ORB Long",
-                    "icon": "🟢", "window": "9:30–10:15 AM",
+                    "setup": "PDH_BREAKOUT", "setup_label": "PDH Breakout",
+                    "icon": "🟢",
+                    "window": "Live confirm at open · NSE 9:15 AM+",
+                    "data_note": "EOD alert — verify opening range and volume in live session before entry",
                     "entry": entry, "stop_loss": sl,
                     "target1": _sf(entry + risk * 2),
                     "target2": _sf(entry + risk * 3),
-                    "note": f"Break above PDH ₹{pdh} · VWAP ₹{vwap_20} support · 9 EMA aligned",
+                    "note": (f"Closed within 2% of PDH ₹{pdh} · SL just below PDH · "
+                             f"20D VWAP ₹{vwap_20d} (swing bias: bullish) · "
+                             f"{stp_note} · 9 EMA aligned · "
+                             f"Confirm live: opening range holding above PDH + vol surge"),
                     "rr": "1:2 / 1:3",
                 })
 
-            # ORB Short: CMP within 2% below PDL  →  potential breakdown
-            if 0 <= (pdl - cmp) / pdl * 100 <= 2.0 and cmp < vwap_20 and e9 and cmp <= e9:
+            # PDL Breakdown: CMP closed within 2% below PDL — bearish continuation setup.
+            # Same data limitation as above — EOD proxy only.
+            # Trader must confirm the live opening range is holding below PDL at open.
+            # Filter: swing bias bearish (CMP below 20D VWAP) + 9 EMA below.
+            # SL: 0.5% above PDL. 20D VWAP NOT used as SL.
+            if 0 <= (pdl - cmp) / pdl * 100 <= 2.0 and vwap_20d and cmp < vwap_20d and e9 and cmp <= e9:
                 entry = _sf(pdl * 0.998)
-                sl    = _sf(max(vwap_20, pdl * 1.005))
+                sl    = _sf(pdl * 1.005)           # 0.5% above PDL — intraday noise buffer
                 risk  = max((sl - entry), 0.01) if (entry and sl) else 1
+                stp_note = f"Session TP ₹{session_tp}" if session_tp else ""
                 setups.append({
-                    "setup": "ORB_SHORT", "setup_label": "ORB Short",
-                    "icon": "🔴", "window": "9:30–10:15 AM",
+                    "setup": "PDL_BREAKDOWN", "setup_label": "PDL Breakdown",
+                    "icon": "🔴",
+                    "window": "Live confirm at open · NSE 9:15 AM+",
+                    "data_note": "EOD alert — verify opening range and volume in live session before entry",
                     "entry": entry, "stop_loss": sl,
                     "target1": _sf(entry - risk * 2),
                     "target2": _sf(entry - risk * 3),
-                    "note": f"Break below PDL ₹{pdl} · VWAP ₹{vwap_20} resistance · 9 EMA below",
+                    "note": (f"Closed within 2% of PDL ₹{pdl} · SL just above PDL · "
+                             f"20D VWAP ₹{vwap_20d} (swing bias: bearish) · "
+                             f"{stp_note} · 9 EMA below · "
+                             f"Confirm live: opening range holding below PDL + vol surge"),
                     "rr": "1:2 / 1:3",
                 })
 
-            # VWAP Reversion Long: price > 1.5% below VWAP + RSI oversold
-            if vwap_dev_pct is not None and vwap_dev_pct <= -1.5 and rsi_val and rsi_val < 38:
-                swing_low = _sf(low.iloc[-5:].min())
+            # Session TP Reversion Long
+            # Trigger: CMP is > 1.5% below the prior session's typical price (PDH+PDL+PDC)/3
+            #          AND RSI < 38 confirms oversold reading at this session deviation.
+            # This is coherent: the prior session TP is where institutional money averaged
+            # in yesterday. When price drops 1.5%+ below that level early in the session,
+            # it represents an opportunity to fade the move back toward that anchor.
+            # Target: session_tp — the natural intraday mean-reversion target.
+            # Window: morning session only (9:30–11:30 AM). Mean-reversion dynamics
+            #         weaken after the first 90 minutes as new price discovery sets in.
+            if session_tp and session_tp_dev is not None and session_tp_dev <= -1.5 and rsi_val and rsi_val < 38:
+                swing_low = _sf(low.iloc[-3:].min())
                 sl   = _sf(swing_low * 0.99) if swing_low else _sf(cmp * 0.985)
                 risk = max(cmp - sl, 0.01) if sl else 1
                 setups.append({
-                    "setup": "VWAP_REVERSION_LONG", "setup_label": "VWAP Reversion ↑",
-                    "icon": "↩️", "window": "Any (not 11:30–12:30)",
+                    "setup": "SESSION_REVERSION_LONG", "setup_label": "Session TP Reversion ↑",
+                    "icon": "↩️", "window": "9:30–11:30 AM only",
                     "entry": cmp, "stop_loss": sl,
-                    "target1": vwap_20,
-                    "target2": _sf(vwap_20 + abs(vwap_dev_pct / 100 * vwap_20) * 0.5),
-                    "note": f"{abs(vwap_dev_pct):.1f}% below VWAP · RSI {rsi_val:.0f} oversold · Scalp to VWAP",
-                    "rr": "VWAP target",
+                    "target1": session_tp,
+                    "target2": _sf(session_tp + abs(session_tp_dev / 100 * session_tp) * 0.3),
+                    "note": (f"{abs(session_tp_dev):.1f}% below Session TP ₹{session_tp} · "
+                             f"RSI {rsi_val:.0f} oversold · Fade back to prior session anchor · "
+                             f"Exit by 11:30 AM regardless"),
+                    "rr": "Session TP target",
                 })
 
-            # VWAP Reversion Short: price > 1.5% above VWAP + RSI overbought
-            if vwap_dev_pct is not None and vwap_dev_pct >= 1.5 and rsi_val and rsi_val > 62:
-                swing_hi = _sf(high.iloc[-5:].max())
+            # Session TP Reversion Short
+            # Mirror of above: CMP > 1.5% above session TP + RSI > 62 overbought.
+            if session_tp and session_tp_dev is not None and session_tp_dev >= 1.5 and rsi_val and rsi_val > 62:
+                swing_hi = _sf(high.iloc[-3:].max())
                 sl   = _sf(swing_hi * 1.01) if swing_hi else _sf(cmp * 1.015)
                 risk = max(sl - cmp, 0.01) if sl else 1
                 setups.append({
-                    "setup": "VWAP_REVERSION_SHORT", "setup_label": "VWAP Reversion ↓",
-                    "icon": "↪️", "window": "Any (not 11:30–12:30)",
+                    "setup": "SESSION_REVERSION_SHORT", "setup_label": "Session TP Reversion ↓",
+                    "icon": "↪️", "window": "9:30–11:30 AM only",
                     "entry": cmp, "stop_loss": sl,
-                    "target1": vwap_20,
-                    "target2": _sf(vwap_20 - abs(vwap_dev_pct / 100 * vwap_20) * 0.5),
-                    "note": f"{vwap_dev_pct:.1f}% above VWAP · RSI {rsi_val:.0f} overbought · Scalp to VWAP",
-                    "rr": "VWAP target",
+                    "target1": session_tp,
+                    "target2": _sf(session_tp - abs(session_tp_dev / 100 * session_tp) * 0.3),
+                    "note": (f"{session_tp_dev:.1f}% above Session TP ₹{session_tp} · "
+                             f"RSI {rsi_val:.0f} overbought · Fade back to prior session anchor · "
+                             f"Exit by 11:30 AM regardless"),
+                    "rr": "Session TP target",
                 })
 
         # Gap plays (based on yesterday's open vs close-before)
@@ -239,51 +302,58 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                     "rr": "1:2 if breakdown holds",
                 })
 
-        # Sort: directional ORB first
-        order = ["ORB_LONG", "ORB_SHORT", "GAP_UP", "GAP_DOWN",
-                 "VWAP_REVERSION_LONG", "VWAP_REVERSION_SHORT"]
+        # Sort: PDH/PDL level alerts first (level-based, clearest triggers),
+        # then gap plays, then session reversion (timing discipline required)
+        order = ["PDH_BREAKOUT", "PDL_BREAKDOWN", "GAP_UP", "GAP_DOWN",
+                 "SESSION_REVERSION_LONG", "SESSION_REVERSION_SHORT"]
         setups.sort(key=lambda x: order.index(x["setup"]) if x["setup"] in order else 99)
 
-        # Trend label
-        above_vwap = cmp > vwap_20 if (cmp and vwap_20) else None
+        # Swing bias: price vs 20D rolling VWAP (multi-session trend reference)
+        above_20d_vwap = cmp > vwap_20d if (cmp and vwap_20d) else None
+        # Intraday bias: price vs prior session TP (session anchor)
+        above_session_tp = cmp > session_tp if (cmp and session_tp) else None
         ema_bullish = (e9 and e21 and e9 > e21 and cmp >= e9)
 
         return {
-            "symbol":        sym.replace(".NS", ""),
-            "raw_symbol":    sym,
-            "name":          info.get("name", sym),
-            "sector":        info.get("sector", "—"),
-            "cmp":           cmp,
-            "chg_pct":       chg_pct,
-            "gap_pct":       gap_pct,
+            "symbol":          sym.replace(".NS", ""),
+            "raw_symbol":      sym,
+            "name":            info.get("name", sym),
+            "sector":          info.get("sector", "—"),
+            "cmp":             cmp,
+            "chg_pct":         chg_pct,
+            "gap_pct":         gap_pct,
             # Key levels
-            "pdh":           pdh,
-            "pdl":           pdl,
-            "pdc":           pdc,
-            "vwap_20":       vwap_20,
-            "vwap_dev_pct":  vwap_dev_pct,
-            "wk_pivot":      wk_pivot,
-            "wk_r1":         wk_r1,
-            "wk_s1":         wk_s1,
-            "wk_r2":         wk_r2,
-            "wk_s2":         wk_s2,
+            "pdh":             pdh,
+            "pdl":             pdl,
+            "pdc":             pdc,
+            # Session TP — prior session VWAP approximation (intraday anchor)
+            "session_tp":      session_tp,
+            "session_tp_dev":  session_tp_dev,
+            # 20D rolling VWAP — swing trend reference only
+            "vwap_20d":        vwap_20d,
+            "wk_pivot":        wk_pivot,
+            "wk_r1":           wk_r1,
+            "wk_s1":           wk_s1,
+            "wk_r2":           wk_r2,
+            "wk_s2":           wk_s2,
             # Indicators
-            "atr_14":        last_atr,
-            "atr_pct":       atr_pct,
-            "avg_vol_l":     avg20v_l,
-            "rsi_14":        rsi_val,
-            "ema9":          e9,
-            "ema21":         e21,
-            # Status
-            "above_vwap":    above_vwap,
-            "ema_bullish":   ema_bullish,
-            "qualified":     qualified,
-            "qual_atr":      qual_atr,
-            "qual_vol":      qual_vol,
+            "atr_14":          last_atr,
+            "atr_pct":         atr_pct,
+            "avg_vol_l":       avg20v_l,
+            "rsi_14":          rsi_val,
+            "ema9":            e9,
+            "ema21":           e21,
+            # Bias flags
+            "above_20d_vwap":   above_20d_vwap,    # swing bias (20D rolling)
+            "above_session_tp": above_session_tp,   # intraday bias (prior session TP)
+            "ema_bullish":      ema_bullish,
+            "qualified":        qualified,
+            "qual_atr":         qual_atr,
+            "qual_vol":         qual_vol,
             # Setups
-            "setups":        setups,
-            "setup_count":   len(setups),
-            "has_setup":     len(setups) > 0,
+            "setups":           setups,
+            "setup_count":      len(setups),
+            "has_setup":        len(setups) > 0,
         }
     except Exception as e:
         logger.warning(f"IntraContra({sym}): {e}")
@@ -296,7 +366,9 @@ def _market_context() -> dict:
     ctx = {
         "nifty_price": None, "nifty_chg_pct": None,
         "nifty_pdh": None, "nifty_pdl": None,
-        "nifty_vwap": None, "nifty_rsi": None,
+        "nifty_session_tp": None,   # prior session TP = (PDH+PDL+PDC)/3
+        "nifty_vwap_20d": None,     # 20D rolling VWAP — swing trend reference
+        "nifty_rsi": None,
         "vix_value": None, "vix_status": "UNKNOWN",
         "trade_bias": "NEUTRAL", "trade_bias_color": "yellow",
     }
@@ -304,22 +376,30 @@ def _market_context() -> dict:
         df = yf.Ticker("^NSEI").history(period="3mo", auto_adjust=True).dropna(subset=["Close"]).sort_index()
         if len(df) >= 10:
             close = df["Close"]; high = df["High"]; low = df["Low"]
-            lc   = float(close.iloc[-1])
-            prev = float(close.iloc[-2])
-            tp   = (high + low + close) / 3
-            vol  = df.get("Volume", pd.Series(1, index=df.index))
-            vwap = _sf((tp * vol).rolling(20).sum().iloc[-1] / vol.rolling(20).sum().iloc[-1])
+            lc    = float(close.iloc[-1])
+            prev  = float(close.iloc[-2])
+            pdh_n = float(high.iloc[-1])
+            pdl_n = float(low.iloc[-1])
+            pdc_n = float(close.iloc[-1])
+            # Prior session TP — intraday mean-reversion anchor for NIFTY
+            nifty_stp = _sf((pdh_n + pdl_n + pdc_n) / 3)
+            # 20D rolling VWAP — swing trend reference
+            tp    = (high + low + close) / 3
+            vol   = df.get("Volume", pd.Series(1, index=df.index))
+            vwap_20d = _sf((tp * vol).rolling(20).sum().iloc[-1] / vol.rolling(20).sum().iloc[-1])
             ctx.update({
-                "nifty_price":   _sf(lc),
-                "nifty_chg_pct": _sf((lc - prev) / prev * 100),
-                "nifty_pdh":     _sf(float(high.iloc[-1])),
-                "nifty_pdl":     _sf(float(low.iloc[-1])),
-                "nifty_vwap":    vwap,
-                "nifty_rsi":     _sf(_rsi(close).iloc[-1]),
+                "nifty_price":     _sf(lc),
+                "nifty_chg_pct":   _sf((lc - prev) / prev * 100),
+                "nifty_pdh":       _sf(pdh_n),
+                "nifty_pdl":       _sf(pdl_n),
+                "nifty_session_tp": nifty_stp,
+                "nifty_vwap_20d":  vwap_20d,
+                "nifty_rsi":       _sf(_rsi(close).iloc[-1]),
             })
-            if vwap:
-                bias = "LONG" if lc > vwap else "CAUTION"
-                col  = "green" if lc > vwap else "red"
+            # Swing bias: NIFTY price vs 20D rolling VWAP
+            if vwap_20d:
+                bias = "LONG" if lc > vwap_20d else "CAUTION"
+                col  = "green" if lc > vwap_20d else "red"
                 ctx.update({"trade_bias": bias, "trade_bias_color": col})
     except Exception as e:
         logger.warning(f"Market context error: {e}")
@@ -357,16 +437,17 @@ def run_intra_contra(_universe: dict = None) -> dict:
         results.sort(key=lambda x: (-x["setup_count"], -int(x["qualified"]),
                                     x["symbol"]))
 
-        total      = len(results)
-        qualified  = sum(1 for s in results if s["qualified"])
-        w_setups   = sum(1 for s in results if s["has_setup"])
-        orb_long   = sum(1 for s in results for st in s["setups"] if st["setup"] == "ORB_LONG")
-        orb_short  = sum(1 for s in results for st in s["setups"] if st["setup"] == "ORB_SHORT")
-        vwap_rev   = sum(1 for s in results for st in s["setups"]
-                         if st["setup"] in ("VWAP_REVERSION_LONG", "VWAP_REVERSION_SHORT"))
-        gap_plays  = sum(1 for s in results for st in s["setups"]
-                         if st["setup"] in ("GAP_UP", "GAP_DOWN"))
-        above_vwap = sum(1 for s in results if s.get("above_vwap"))
+        total        = len(results)
+        qualified    = sum(1 for s in results if s["qualified"])
+        w_setups     = sum(1 for s in results if s["has_setup"])
+        orb_long     = sum(1 for s in results for st in s["setups"] if st["setup"] == "PDH_BREAKOUT")
+        orb_short    = sum(1 for s in results for st in s["setups"] if st["setup"] == "PDL_BREAKDOWN")
+        sess_rev     = sum(1 for s in results for st in s["setups"]
+                           if st["setup"] in ("SESSION_REVERSION_LONG", "SESSION_REVERSION_SHORT"))
+        gap_plays    = sum(1 for s in results for st in s["setups"]
+                           if st["setup"] in ("GAP_UP", "GAP_DOWN"))
+        above_stp    = sum(1 for s in results if s.get("above_session_tp"))
+        above_20dvwap = sum(1 for s in results if s.get("above_20d_vwap"))
 
         return {
             "status":         "success",
@@ -375,14 +456,15 @@ def run_intra_contra(_universe: dict = None) -> dict:
             "market_context": market_ctx,
             "stocks":         results,
             "summary": {
-                "total":       total,
-                "qualified":   qualified,
-                "with_setups": w_setups,
-                "orb_long":    orb_long,
-                "orb_short":   orb_short,
-                "vwap_rev":    vwap_rev,
-                "gap_plays":   gap_plays,
-                "above_vwap":  above_vwap,
+                "total":            total,
+                "qualified":        qualified,
+                "with_setups":      w_setups,
+                "pdh_breakout":     orb_long,
+                "pdl_breakdown":    orb_short,
+                "session_rev":      sess_rev,
+                "gap_plays":        gap_plays,
+                "above_session_tp": above_stp,
+                "above_20d_vwap":   above_20dvwap,
             },
         }
     except Exception as e:

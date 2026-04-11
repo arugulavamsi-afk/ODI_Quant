@@ -119,6 +119,19 @@ def generate_signals(df: pd.DataFrame) -> dict:
         # ATR value
         atr_val = float(df["ATR"].iloc[-1]) if not pd.isna(df["ATR"].iloc[-1]) else 0.0
 
+        # Gap risk assessment
+        # A stock with ATR ≥ 2% regularly sees overnight gaps > 1%, meaning the
+        # next-day open will frequently blow straight through PDH+0.1% before the
+        # market even opens — making the entry trigger stale from the bell.
+        # ATR ≥ 1.5% is borderline (MEDIUM); below that the gap risk is LOW.
+        atr_pct = (atr_val / close) if close > 0 else 0.0
+        if atr_pct >= 0.02:
+            gap_risk = "HIGH"    # 2%+ ATR — gap invalidation is routine
+        elif atr_pct >= 0.015:
+            gap_risk = "MEDIUM"  # 1.5-2% ATR — borderline, stay alert
+        else:
+            gap_risk = "LOW"     # < 1.5% ATR — gap unlikely to exceed 1%
+
         # MA values
         ma20 = float(df["MA20"].iloc[-1]) if not pd.isna(df["MA20"].iloc[-1]) else None
         ma50 = float(df["MA50"].iloc[-1]) if not pd.isna(df["MA50"].iloc[-1]) else None
@@ -162,6 +175,9 @@ def generate_signals(df: pd.DataFrame) -> dict:
             "range_ratio": round(range_ratio, 2),
             # Closing strength
             "closing_strength": round(closing_strength, 1),
+            # Gap risk
+            "gap_risk": gap_risk,           # HIGH/MEDIUM/LOW — based on ATR%
+            "atr_pct": round(atr_pct * 100, 2),  # ATR as % of close (for display)
             # Component scores
             "trend_score": trend_score,
             "breakout_score": breakout_score,
@@ -170,8 +186,25 @@ def generate_signals(df: pd.DataFrame) -> dict:
         }
 
         # Generate signals
-        long_signal = generate_long_signal(df, indicators)
+        long_signal  = generate_long_signal(df, indicators)
         short_signal = generate_short_signal(df, indicators)
+
+        # Gap-risk downgrade: HIGH ATR stocks routinely gap past PDH/PDL at open,
+        # making the entry trigger stale before the market opens. Cap confidence at
+        # MODERATE so these never appear as HIGH_CONFIDENCE setups in the scanner.
+        if gap_risk == "HIGH":
+            if long_signal["signal"] == "HIGH_CONFIDENCE":
+                long_signal["signal"] = "MODERATE"
+                long_signal["rule_details"].append(
+                    f"[GAP RISK] ATR is {round(atr_pct*100,2)}% of price — PDH trigger "
+                    f"likely blown through at open. Signal capped at MODERATE."
+                )
+            if short_signal["signal"] == "HIGH_CONFIDENCE":
+                short_signal["signal"] = "MODERATE"
+                short_signal["rule_details"].append(
+                    f"[GAP RISK] ATR is {round(atr_pct*100,2)}% of price — PDL trigger "
+                    f"likely blown through at open. Signal capped at MODERATE."
+                )
 
         return {
             "indicators": indicators,
