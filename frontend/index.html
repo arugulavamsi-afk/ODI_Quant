@@ -27,6 +27,9 @@
     <button class="page-tab" data-page="strategy" onclick="showPage('strategy')">
       🎯 Sniper
     </button>
+    <button class="page-tab" data-page="intra" onclick="showPage('intra')">
+      ⚡ IntraContra
+    </button>
   </div>
 
   <div class="nav-controls">
@@ -415,6 +418,234 @@
 
   </div><!-- /stratContent -->
 </div><!-- /strategyPage -->
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- INTRACONTRA PAGE                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div id="intraPage" style="display:none">
+
+  <!-- Sub-header -->
+  <div class="ic-sub-header">
+    <div>
+      <span class="ic-sub-title">IntraContra <span class="ic-accent">3M Momentum Swing</span></span>
+      <span class="ic-sub-desc">Capture momentum · Respect structure · Manage risk religiously</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="last-run" id="icLastRun">–</span>
+      <button class="btn-ic-run" id="icRunBtn" onclick="runIntraContra()">
+        ⚡ Run Scanner
+      </button>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="icEmpty" class="ic-empty">
+    <div style="font-size:52px;margin-bottom:12px">⚡</div>
+    <p>Click <strong>Run Scanner</strong> to start the 3M Momentum Swing scan.</p>
+    <p style="font-size:11px;color:var(--text-dim);margin-top:6px">
+      Scans full NIFTY 100 for Flag &amp; Pole, EMA Pullback, 52W Breakout &amp; Sector Rotation setups.
+    </p>
+  </div>
+
+  <!-- Content -->
+  <div id="icContent" style="display:none">
+
+    <!-- ── Market Pulse ─────────────────────────────────────────────────── -->
+    <div class="ic-section">
+      <div class="ic-section-title">
+        <span class="ic-phase-badge">Market Pulse</span>
+        Multi-Timeframe Trend Confirmation
+      </div>
+      <div class="ic-ctx-grid" id="icCtxGrid"><!-- JS --></div>
+    </div>
+
+    <!-- ── 3M Scanner ────────────────────────────────────────────────────── -->
+    <div class="ic-section">
+      <div class="ic-section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <span><span class="ic-phase-badge">Scanner</span> 3M Momentum Stock Setups</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="ic-tab active" data-if="ALL"              onclick="setIcFilter(this,'ALL')">All NIFTY 100</button>
+          <button class="ic-tab" data-if="HAS_SETUP"              onclick="setIcFilter(this,'HAS_SETUP')">🔥 Has Setup</button>
+          <button class="ic-tab" data-if="FLAG_POLE"              onclick="setIcFilter(this,'FLAG_POLE')">Flag &amp; Pole</button>
+          <button class="ic-tab" data-if="EMA_PULLBACK"           onclick="setIcFilter(this,'EMA_PULLBACK')">EMA Pullback</button>
+          <button class="ic-tab" data-if="HIGH_BREAKOUT"          onclick="setIcFilter(this,'HIGH_BREAKOUT')">52W Breakout</button>
+          <button class="ic-tab" data-if="SECTOR_ROTATION"        onclick="setIcFilter(this,'SECTOR_ROTATION')">Sector Rotation</button>
+          <button class="ic-tab" data-if="EMA_ALIGNED"            onclick="setIcFilter(this,'EMA_ALIGNED')">EMA Aligned</button>
+        </div>
+      </div>
+
+      <!-- Summary chips -->
+      <div class="ic-chips" id="icChips"><!-- JS --></div>
+
+      <!-- Table -->
+      <div class="ic-table-wrap">
+        <table class="ic-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th onclick="sortIc('symbol')">Symbol ↕</th>
+              <th onclick="sortIc('sector_rank')">Sector ↕</th>
+              <th onclick="sortIc('cmp')">CMP ↕</th>
+              <th onclick="sortIc('chg_pct')">Chg% ↕</th>
+              <th>W/D Trend</th>
+              <th onclick="sortIc('rsi_14')">RSI ↕</th>
+              <th onclick="sortIc('adx_14')">ADX ↕</th>
+              <th onclick="sortIc('vol_ratio')">Vol ↕</th>
+              <th onclick="sortIc('dist_52wh')">52W ↕</th>
+              <th>Setups</th>
+            </tr>
+          </thead>
+          <tbody id="icTableBody"><!-- JS --></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Capital Allocation & Position Sizing ──────────────────────────── -->
+    <div class="ic-section">
+      <div class="ic-section-title">
+        <span class="ic-phase-badge">Capital Model</span>
+        Championship Sizing &amp; Allocation
+      </div>
+      <div class="ic-capital-grid">
+
+        <!-- Allocation model -->
+        <div class="ic-card">
+          <div class="ic-card-title">Allocation Model (₹10L Default)</div>
+          <div class="ic-alloc-bars">
+            <div class="ic-alloc-row">
+              <span class="ic-alloc-label">Core Swings (3–5 stocks)</span>
+              <div class="ic-alloc-bar-wrap">
+                <div class="ic-alloc-bar" style="width:60%;background:#f59e0b"></div>
+              </div>
+              <span class="ic-alloc-pct" id="icAlloc60">60%</span>
+            </div>
+            <div class="ic-alloc-row">
+              <span class="ic-alloc-label">High-Conviction Breakouts</span>
+              <div class="ic-alloc-bar-wrap">
+                <div class="ic-alloc-bar" style="width:25%;background:#3b82f6"></div>
+              </div>
+              <span class="ic-alloc-pct" id="icAlloc25">25%</span>
+            </div>
+            <div class="ic-alloc-row">
+              <span class="ic-alloc-label">Cash Reserve / Opportunistic</span>
+              <div class="ic-alloc-bar-wrap">
+                <div class="ic-alloc-bar" style="width:15%;background:var(--text-dim)"></div>
+              </div>
+              <span class="ic-alloc-pct" id="icAlloc15">15%</span>
+            </div>
+          </div>
+          <div class="ic-risk-rule">
+            Max 2% capital risk per trade &nbsp;·&nbsp; Max 6 open positions
+          </div>
+        </div>
+
+        <!-- Calculator -->
+        <div class="ic-card">
+          <div class="ic-card-title">Position Size Calculator</div>
+          <div class="ic-calc-fields">
+            <div class="ic-field"><label>Total Capital (₹)</label>
+              <input type="number" id="icCapital" value="1000000" oninput="calcIcPosition()"/></div>
+            <div class="ic-field"><label>Entry Price (₹)</label>
+              <input type="number" id="icEntry" placeholder="e.g. 800" oninput="calcIcPosition()"/></div>
+            <div class="ic-field"><label>Stop Loss (₹)</label>
+              <input type="number" id="icStop" placeholder="e.g. 775" oninput="calcIcPosition()"/></div>
+            <div class="ic-field"><label>Risk % per Trade</label>
+              <input type="number" id="icRiskPct" value="2" step="0.1" min="0.5" max="3" oninput="calcIcPosition()"/></div>
+          </div>
+          <div id="icCalcOut" class="ic-calc-out">
+            <p style="color:var(--text-dim);font-size:12px">Enter Entry and Stop Loss to calculate.</p>
+          </div>
+        </div>
+
+        <!-- Risk firewall -->
+        <div class="ic-card">
+          <div class="ic-card-title">Risk Firewall 🚨</div>
+          <div class="ic-firewall-list">
+            <div class="ic-fw-row"><span class="ic-fw-icon red">!</span><span>Daily −4% capital → <strong>screens off</strong></span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon red">!</span><span>Weekly −7% → <strong>half size</strong> next week</span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon orange">!</span><span>Portfolio −15% from peak → <strong>50% cash</strong></span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon orange">!</span><span>3 consecutive losses → <strong>1-day break</strong></span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon yellow">→</span><span>Exit all positions <strong>2 days before</strong> results</span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon yellow">→</span><span>Never average down a losing position</span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon green">↑</span><span>At +2R → move SL to <strong>breakeven</strong></span></div>
+            <div class="ic-fw-row"><span class="ic-fw-icon green">↑</span><span>At +1.5R → add 50% more (Pyramid Add)</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Performance KPIs ──────────────────────────────────────────────── -->
+    <div class="ic-section">
+      <div class="ic-section-title">
+        <span class="ic-phase-badge">KPIs</span> Championship Performance Tracker
+      </div>
+      <div class="ic-kpi-grid">
+        <div class="ic-kpi-card">
+          <div class="ic-kpi-label">Win Rate</div>
+          <div class="ic-kpi-target">Target &gt; 55%</div>
+          <input class="ic-kpi-input" type="text" placeholder="e.g. 62%" id="kpiWinRate"/>
+        </div>
+        <div class="ic-kpi-card">
+          <div class="ic-kpi-label">Avg R:R</div>
+          <div class="ic-kpi-target">Target &gt; 2.5:1</div>
+          <input class="ic-kpi-input" type="text" placeholder="e.g. 2.8" id="kpiRR"/>
+        </div>
+        <div class="ic-kpi-card">
+          <div class="ic-kpi-label">Max Drawdown</div>
+          <div class="ic-kpi-target">Target &lt; 15%</div>
+          <input class="ic-kpi-input" type="text" placeholder="e.g. −8%" id="kpiDD"/>
+        </div>
+        <div class="ic-kpi-card">
+          <div class="ic-kpi-label">Monthly Return</div>
+          <div class="ic-kpi-target">Target 6–10%</div>
+          <input class="ic-kpi-input" type="text" placeholder="e.g. +7.4%" id="kpiMonthly"/>
+        </div>
+        <div class="ic-kpi-card">
+          <div class="ic-kpi-label">Profit Factor</div>
+          <div class="ic-kpi-target">Target &gt; 2.0</div>
+          <input class="ic-kpi-input" type="text" placeholder="e.g. 2.3" id="kpiPF"/>
+        </div>
+        <div class="ic-kpi-card">
+          <div class="ic-kpi-label">Expectancy / Trade</div>
+          <div class="ic-kpi-target">Target &gt; ₹8,000</div>
+          <input class="ic-kpi-input" type="text" placeholder="e.g. ₹11,200" id="kpiExp"/>
+        </div>
+      </div>
+      <!-- Championship trajectory -->
+      <div class="ic-trajectory">
+        <div class="ic-traj-title">Championship Trajectory</div>
+        <div class="ic-traj-row">
+          <div class="ic-traj-phase ic-traj-1">
+            <div class="ic-traj-months">M 1–3</div>
+            <div class="ic-traj-target">15–20%</div>
+            <div class="ic-traj-note">Build base, learn rhythm</div>
+          </div>
+          <div class="ic-traj-arrow">→</div>
+          <div class="ic-traj-phase ic-traj-2">
+            <div class="ic-traj-months">M 4–6</div>
+            <div class="ic-traj-target">35–50%</div>
+            <div class="ic-traj-note">Compound gains, add size</div>
+          </div>
+          <div class="ic-traj-arrow">→</div>
+          <div class="ic-traj-phase ic-traj-3">
+            <div class="ic-traj-months">M 7–9</div>
+            <div class="ic-traj-target">65–85%</div>
+            <div class="ic-traj-note">Aggressive pyramid adds</div>
+          </div>
+          <div class="ic-traj-arrow">→</div>
+          <div class="ic-traj-phase ic-traj-4">
+            <div class="ic-traj-months">M 10–12</div>
+            <div class="ic-traj-target">100–150%+</div>
+            <div class="ic-traj-note">Go for the trophy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /icContent -->
+</div><!-- /intraPage -->
 
 
 <!-- ── LOADER OVERLAY ──────────────────────────────────────────────────── -->

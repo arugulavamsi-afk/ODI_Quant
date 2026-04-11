@@ -270,6 +270,32 @@ async def get_nifty_analysis():
         raise HTTPException(status_code=500, detail=f"NIFTY analysis failed: {str(e)}")
 
 
+@app.get("/api/strategy/intra-contra")
+async def get_intra_contra():
+    """
+    IntraContra — 3M Momentum Swing System.
+    Scans full NIFTY 100 for Flag & Pole, EMA Pullback, 52W High Breakout,
+    and Sector Rotation setups with multi-timeframe trend confirmation.
+    """
+    try:
+        from strategy.intra_contra import run_intra_contra
+        logger.info("IntraContra scan: starting…")
+        result = run_intra_contra(STOCK_UNIVERSE)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result.get("error", "Scan failed"))
+        logger.info(
+            "IntraContra complete — %d stocks, %d with setups",
+            result["summary"]["total"],
+            result["summary"]["with_setups"],
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("IntraContra error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"IntraContra failed: {str(e)}")
+
+
 @app.get("/api/strategy/trend-pullback")
 async def get_trend_pullback_strategy():
     """

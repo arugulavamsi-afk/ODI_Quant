@@ -488,8 +488,9 @@ function showPage(page) {
   const isScanner  = page === 'scanner';
   const isStrategy = page === 'strategy';
   document.getElementById('scannerPage').style.display  = isScanner  ? '' : 'none';
-  document.getElementById('niftyPage').style.display    = page === 'nifty' ? '' : 'none';
-  document.getElementById('strategyPage').style.display = isStrategy ? '' : 'none';
+  document.getElementById('niftyPage').style.display    = page === 'nifty'    ? '' : 'none';
+  document.getElementById('strategyPage').style.display = isStrategy          ? '' : 'none';
+  document.getElementById('intraPage').style.display    = page === 'intra'    ? '' : 'none';
   document.getElementById('runBtn').style.display       = isScanner  ? '' : 'none';
   document.getElementById('lastRunTime').style.display  = isScanner  ? '' : 'none';
 }
@@ -1331,6 +1332,372 @@ function calcPosition() {
     <div class="calc-row" style="margin-top:6px;font-size:10px;color:var(--text-dim)">
       <span>Max portfolio heat (6 positions)</span>
       <strong>${(riskPct * 6).toFixed(1)}%</strong>
+    </div>
+  `;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   INTRACONTRA — 3M MOMENTUM SWING SYSTEM
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let icStocks   = [];
+let icFilter   = 'ALL';
+let icSortKey  = 'setup_count';
+let icSortAsc  = false;
+let icExpanded = new Set();
+
+// ── Fetch ─────────────────────────────────────────────────────────────────
+async function runIntraContra() {
+  const btn = document.getElementById('icRunBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '⏳ Scanning…';
+  showLoader('Fetching Nifty trend + VIX…');
+
+  const msgs = [
+    'Computing sector ranks…',
+    'Screening EMA alignment…',
+    'RSI + ADX quality gate…',
+    'Detecting Flag & Pole setups…',
+    'Scanning 52-week breakouts…',
+    'Finding EMA pullback entries…',
+    'Identifying sector rotation plays…',
+    'Building trade plans…',
+  ];
+  let mi = 0;
+  const t = setInterval(() => {
+    document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
+  }, 9000);
+
+  try {
+    const res = await fetch(`${API}/api/strategy/intra-contra`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderIntraContra(data);
+    showToast('IntraContra scan complete!', 'success');
+  } catch (e) {
+    showToast(`IntraContra error: ${e.message}`, 'error');
+    console.error(e);
+  } finally {
+    clearInterval(t);
+    hideLoader();
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = '⚡ Run Scanner';
+  }
+}
+
+// ── Master renderer ───────────────────────────────────────────────────────
+function renderIntraContra(data) {
+  document.getElementById('icEmpty').style.display   = 'none';
+  document.getElementById('icContent').style.display = '';
+
+  const ts = data.run_date && data.run_time
+    ? `Last: ${data.run_date} ${data.run_time}` : (data.run_date || '–');
+  document.getElementById('icLastRun').textContent = ts;
+
+  renderIcCtx(data.market_context || {});
+  icStocks = data.stocks || [];
+  renderIcChips(data.summary || {});
+  applyIcFilters();
+}
+
+// ── Market Pulse ──────────────────────────────────────────────────────────
+function renderIcCtx(ctx) {
+  const biasCol = ctx.trade_bias_color === 'green' ? 'var(--green)'
+                : ctx.trade_bias_color === 'red'   ? 'var(--red)'
+                : '#f59e0b';
+
+  const wkCol = ctx.nifty_weekly === 'BULL'     ? 'var(--green)'
+              : ctx.nifty_weekly === 'BEAR'     ? 'var(--red)'
+              : '#f59e0b';
+  const dyCol = ctx.nifty_daily === 'STRONG_BULL' || ctx.nifty_daily === 'BULL'
+              ? 'var(--green)' : ctx.nifty_daily === 'BEAR' ? 'var(--red)' : '#f59e0b';
+
+  const vixCol = ctx.vix_status === 'LOW'     ? 'var(--green)'
+               : ctx.vix_status === 'ELEVATED'? '#f59e0b'
+               : ctx.vix_status === 'HIGH'    ? 'var(--red)'
+               : 'var(--text-muted)';
+
+  const chgHtml = ctx.nifty_chg_pct != null
+    ? `<span style="color:${ctx.nifty_chg_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13px">
+        ${ctx.nifty_chg_pct >= 0 ? '+' : ''}${ctx.nifty_chg_pct.toFixed(2)}%</span>` : '';
+
+  document.getElementById('icCtxGrid').innerHTML = `
+    <div class="ic-ctx-card">
+      <div class="ic-ctx-label">Nifty 50</div>
+      <div class="ic-ctx-val">
+        ${ctx.nifty_price != null ? '₹' + ctx.nifty_price.toLocaleString('en-IN') : '–'}
+        ${chgHtml}
+      </div>
+      <div class="ic-ctx-sub" style="color:var(--text-muted)">
+        EMA20: ${ctx.nifty_ema20 != null ? '₹' + ctx.nifty_ema20.toLocaleString('en-IN') : '–'}
+        &nbsp;/&nbsp; EMA50: ${ctx.nifty_ema50 != null ? '₹' + ctx.nifty_ema50.toLocaleString('en-IN') : '–'}
+      </div>
+      <div class="ic-ctx-sub">RSI: <strong style="color:${ctx.nifty_rsi >= 55 && ctx.nifty_rsi <= 75 ? 'var(--green)' : 'var(--text-muted)'}">${ctx.nifty_rsi != null ? ctx.nifty_rsi.toFixed(1) : '–'}</strong>
+        &nbsp;ADX: <strong>${ctx.nifty_adx != null ? ctx.nifty_adx.toFixed(1) : '–'}</strong></div>
+    </div>
+    <div class="ic-ctx-card">
+      <div class="ic-ctx-label">Weekly Trend</div>
+      <div class="ic-ctx-val" style="color:${wkCol}">${ctx.nifty_weekly || '–'}</div>
+      <div class="ic-ctx-sub" style="color:var(--text-muted)">From weekly EMA(10)/EMA(20)</div>
+    </div>
+    <div class="ic-ctx-card">
+      <div class="ic-ctx-label">Daily Trend</div>
+      <div class="ic-ctx-val" style="color:${dyCol}">${(ctx.nifty_daily || '–').replace('_', ' ')}</div>
+      <div class="ic-ctx-sub" style="color:var(--text-muted)">EMA 20 / 50 alignment</div>
+    </div>
+    <div class="ic-ctx-card">
+      <div class="ic-ctx-label">India VIX</div>
+      <div class="ic-ctx-val" style="color:${vixCol}">${ctx.vix_value != null ? ctx.vix_value.toFixed(1) : '–'}</div>
+      <div class="ic-ctx-sub" style="color:${vixCol}">${ctx.vix_status || '–'}</div>
+    </div>
+    <div class="ic-ctx-card ic-ctx-bias">
+      <div class="ic-ctx-label">Trade Bias</div>
+      <div class="ic-ctx-val" style="color:${biasCol};font-size:22px">${ctx.trade_bias || '–'}</div>
+      <div class="ic-ctx-sub" style="color:var(--text-dim);font-size:10px">
+        Both Weekly &amp; Daily must be BULL for LONG bias
+      </div>
+    </div>
+  `;
+}
+
+// ── Summary chips ─────────────────────────────────────────────────────────
+function renderIcChips(s) {
+  document.getElementById('icChips').innerHTML = `
+    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.total ?? 0}</span><span class="ic-chip-lbl">NIFTY 100</span></div>
+    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.ema_aligned ?? 0}</span><span class="ic-chip-lbl">EMA Aligned</span></div>
+    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.with_setups ?? 0}</span><span class="ic-chip-lbl">Active Setups</span></div>
+    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.flag_pole ?? 0}</span><span class="ic-chip-lbl">Flag &amp; Pole</span></div>
+    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.ema_pullback ?? 0}</span><span class="ic-chip-lbl">EMA Pullback</span></div>
+    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.high_breakout ?? 0}</span><span class="ic-chip-lbl">52W Breakout</span></div>
+    <div class="ic-chip ic-chip-purple"><span class="ic-chip-num">${s.sector_rotation ?? 0}</span><span class="ic-chip-lbl">Sector Rotation</span></div>
+  `;
+}
+
+// ── Filters + Sort ────────────────────────────────────────────────────────
+function setIcFilter(el, f) {
+  document.querySelectorAll('.ic-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  icFilter = f;
+  applyIcFilters();
+}
+
+function sortIc(key) {
+  if (icSortKey === key) icSortAsc = !icSortAsc;
+  else { icSortKey = key; icSortAsc = key === 'symbol'; }
+  applyIcFilters();
+}
+
+function applyIcFilters() {
+  let f = [...icStocks];
+  if (icFilter === 'HAS_SETUP') {
+    f = f.filter(s => s.has_setup);
+  } else if (icFilter === 'EMA_ALIGNED') {
+    f = f.filter(s => s.ema_aligned);
+  } else if (['FLAG_POLE','EMA_PULLBACK','HIGH_BREAKOUT','SECTOR_ROTATION'].includes(icFilter)) {
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup === icFilter));
+  }
+  f.sort((a, b) => {
+    let va = a[icSortKey], vb = b[icSortKey];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return icSortAsc ? (va < vb ? -1 : va > vb ? 1 : 0)
+                     : (va > vb ? -1 : va < vb ? 1 : 0);
+  });
+  renderIcTable(f);
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────
+function renderIcTable(stocks) {
+  const tbody = document.getElementById('icTableBody');
+  if (!stocks.length) {
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-muted)">No stocks match this filter.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = stocks.map(s => buildIcRow(s)).join('');
+  icExpanded.forEach(id => {
+    const dr = document.getElementById(`ic-det-${id}`);
+    const mr = document.getElementById(`ic-row-${id}`);
+    if (dr) dr.style.display = '';
+    if (mr) mr.classList.add('expanded');
+  });
+}
+
+function buildIcRow(s) {
+  const id    = s.symbol.replace(/[^a-zA-Z0-9]/g, '_');
+  const rowId = `ic-row-${id}`;
+  const detId = `ic-det-${id}`;
+
+  const chg = s.chg_pct;
+  const chgHtml = chg != null
+    ? `<span style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`
+    : '–';
+
+  // Weekly / Daily trend badges
+  const wkCol = s.weekly_trend === 'BULL' ? 'var(--green)' : s.weekly_trend === 'BEAR' ? 'var(--red)' : '#f59e0b';
+  const dyCol = s.daily_trend  === 'STRONG_BULL' || s.daily_trend === 'BULL' ? 'var(--green)'
+              : s.daily_trend  === 'BEAR' ? 'var(--red)' : '#f59e0b';
+  const trendHtml = `<span style="color:${wkCol};font-size:10px">W:${s.weekly_trend?.charAt(0) ?? '?'}</span>
+    <span style="color:var(--text-dim)"> / </span>
+    <span style="color:${dyCol};font-size:10px">D:${(s.daily_trend || '?').replace('STRONG_','S+').replace('BULL','B').replace('BEAR','Br').replace('NEUTRAL','N')}</span>`;
+
+  // RSI colour
+  const rsiCol = s.rsi_14 != null && s.rsi_14 >= 55 && s.rsi_14 <= 75 ? 'var(--green)'
+               : s.rsi_14 != null && s.rsi_14 < 40 ? 'var(--red)' : 'var(--text-muted)';
+
+  // ADX
+  const adxCol = s.adx_14 != null && s.adx_14 >= 25 ? 'var(--green)' : 'var(--text-muted)';
+
+  // Volume
+  const volCol = s.vol_ratio >= 1.5 ? 'var(--green)' : s.vol_ratio >= 1.0 ? 'var(--text-muted)' : 'var(--red)';
+
+  // 52W
+  const d52Col = s.dist_52wh >= -5 ? 'var(--green)' : s.dist_52wh >= -15 ? '#f59e0b' : 'var(--text-muted)';
+
+  // Sector
+  const secHtml = `<span style="color:var(--text-muted)">${s.sector}</span>
+    <br><span style="font-size:10px;color:${s.sector_rank <= 3 ? '#f59e0b' : 'var(--text-dim)'}">
+      ${s.sector_rank <= 3 ? '🔥' : ''} #${s.sector_rank ?? '–'}
+    </span>`;
+
+  // Setup badges
+  const setupCols = { FLAG_POLE: '#f59e0b', EMA_PULLBACK: 'var(--green)', HIGH_BREAKOUT: 'var(--blue)', SECTOR_ROTATION: '#a855f7' };
+  const setupIcons = { FLAG_POLE: '🚩', EMA_PULLBACK: '📉', HIGH_BREAKOUT: '🚀', SECTOR_ROTATION: '🔄' };
+  const setupsHtml = !s.setups?.length
+    ? `<span style="color:var(--text-dim);font-size:10px">${s.ema_aligned ? 'Aligned' : '–'}</span>`
+    : s.setups.map(st =>
+        `<span class="ic-setup-badge" style="background:${setupCols[st.setup]}22;color:${setupCols[st.setup]};border:1px solid ${setupCols[st.setup]}44">
+          ${setupIcons[st.setup]} ${st.setup_label}
+        </span>`
+      ).join('');
+
+  return `
+    <tr id="${rowId}" class="ic-stock-row ${s.has_setup ? 'ic-has-setup' : ''}" onclick="toggleIcRow('${id}')">
+      <td class="ic-expand">${icExpanded.has(id) ? '▼' : '▶'}</td>
+      <td><strong>${s.symbol}</strong><br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
+      <td>${secHtml}</td>
+      <td style="font-family:var(--mono)">₹${fmt(s.cmp)}</td>
+      <td>${chgHtml}</td>
+      <td style="white-space:nowrap">${trendHtml}</td>
+      <td style="color:${rsiCol};font-family:var(--mono)">${s.rsi_14 != null ? s.rsi_14.toFixed(1) : '–'}</td>
+      <td style="color:${adxCol};font-family:var(--mono)">${s.adx_14 != null ? s.adx_14.toFixed(1) : '–'}</td>
+      <td style="color:${volCol};font-family:var(--mono)">${s.vol_ratio != null ? s.vol_ratio.toFixed(1) + 'x' : '–'}</td>
+      <td style="color:${d52Col};font-family:var(--mono)">${s.dist_52wh != null ? s.dist_52wh + '%' : '–'}</td>
+      <td class="ic-setups-cell">${setupsHtml}</td>
+    </tr>
+    <tr id="${detId}" class="ic-detail-row" style="display:none">
+      <td colspan="11" class="ic-detail-cell">${buildIcDetail(s)}</td>
+    </tr>
+  `;
+}
+
+function buildIcDetail(s) {
+  const emaLadder = `
+    <div class="ic-ema-ladder">
+      <div class="ic-ema-row"><span>CMP</span><span style="font-family:var(--mono);color:var(--text)">₹${fmt(s.cmp)}</span></div>
+      <div class="ic-ema-row"><span>EMA 20</span><span style="font-family:var(--mono)">₹${fmt(s.ema20)}</span></div>
+      <div class="ic-ema-row"><span>EMA 50</span><span style="font-family:var(--mono)">₹${fmt(s.ema50)}</span></div>
+      <div class="ic-ema-row"><span>EMA 200</span><span style="font-family:var(--mono)">₹${fmt(s.ema200)}</span></div>
+      <div class="ic-ema-row"><span>52W High</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.w52_high)}</span></div>
+      <div class="ic-ema-row"><span>RSI(14)</span><span style="font-family:var(--mono)">${s.rsi_14 != null ? s.rsi_14.toFixed(1) : '–'}</span></div>
+      <div class="ic-ema-row"><span>ADX(14)</span><span style="font-family:var(--mono)">${s.adx_14 != null ? s.adx_14.toFixed(1) : '–'}</span></div>
+      <div class="ic-ema-row"><span>Vol Ratio</span><span style="font-family:var(--mono)">${s.vol_ratio != null ? s.vol_ratio.toFixed(2) + 'x' : '–'}</span></div>
+      <div class="ic-ema-row"><span>Daily Val</span><span style="font-family:var(--mono)">${s.avg_val_cr ?? '–'} Cr</span></div>
+    </div>`;
+
+  if (!s.setups?.length) {
+    return `<div class="ic-detail-wrap">${emaLadder}<div style="padding:14px;color:var(--text-dim)">No active setups. Stock screened but no pattern trigger yet.</div></div>`;
+  }
+
+  const setupCols = { FLAG_POLE: '#f59e0b', EMA_PULLBACK: 'var(--green)', HIGH_BREAKOUT: 'var(--blue)', SECTOR_ROTATION: '#a855f7' };
+  const cardsHtml = s.setups.map(st => {
+    const risk = st.entry && st.stop_loss ? st.entry - st.stop_loss : null;
+    const riskPct = risk && st.entry ? ((risk / st.entry) * 100).toFixed(1) : null;
+    const pos1L = risk ? Math.floor(1000000 * 0.02 / risk) : null; // 2% of 10L
+    const col   = setupCols[st.setup] || 'var(--text)';
+
+    return `
+      <div class="ic-setup-card" style="border-top-color:${col}">
+        <div class="ic-setup-hdr">
+          <span class="ic-setup-name" style="color:${col}">${st.setup_icon} ${st.setup_label}</span>
+          <span class="ic-setup-wr" style="color:${col}">${st.win_rate}</span>
+        </div>
+        <div class="ic-setup-note">${st.note || ''}</div>
+        <div class="ic-levels-grid">
+          <div class="ic-lvl ic-entry"><span class="ic-lvl-lbl">Entry</span><span class="ic-lvl-val">₹${fmt(st.entry)}</span></div>
+          <div class="ic-lvl ic-stop"><span class="ic-lvl-lbl">Stop Loss</span><span class="ic-lvl-val">₹${fmt(st.stop_loss)}</span>${riskPct ? `<span class="ic-lvl-sub">−${riskPct}%</span>` : ''}</div>
+          <div class="ic-lvl ic-t1"><span class="ic-lvl-lbl">T1 (1.5R) — 40%</span><span class="ic-lvl-val">₹${fmt(st.target1)}</span></div>
+          <div class="ic-lvl ic-t2"><span class="ic-lvl-lbl">T2 (2.5R) — 40%</span><span class="ic-lvl-val">₹${fmt(st.target2)}</span></div>
+          <div class="ic-lvl ic-t3"><span class="ic-lvl-lbl">T3 (trail) — 20%</span><span class="ic-lvl-val">₹${fmt(st.target3)}</span></div>
+          <div class="ic-lvl ic-trail"><span class="ic-lvl-lbl">Trail Stop</span><span class="ic-lvl-val">₹${fmt(st.trail_ref)} <span style="font-size:9px">(${st.trail_label})</span></span></div>
+        </div>
+        <div class="ic-setup-ftr">
+          ${pos1L ? `<span>Qty for ₹10L @ 2% risk: <strong>${pos1L.toLocaleString('en-IN')}</strong></span>` : ''}
+          <span>Vol: <strong>${st.vol_ratio != null ? st.vol_ratio + 'x' : '–'}</strong></span>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `<div class="ic-detail-wrap">${emaLadder}<div class="ic-setups-list">${cardsHtml}</div></div>`;
+}
+
+function toggleIcRow(id) {
+  const det = document.getElementById(`ic-det-${id}`);
+  const row = document.getElementById(`ic-row-${id}`);
+  if (!det) return;
+  const open = det.style.display !== 'none';
+  det.style.display = open ? 'none' : '';
+  row.classList.toggle('expanded', !open);
+  if (open) icExpanded.delete(id); else icExpanded.add(id);
+  const btn = row.querySelector('.ic-expand');
+  if (btn) btn.textContent = open ? '▶' : '▼';
+}
+
+// ── Position size calculator ──────────────────────────────────────────────
+function calcIcPosition() {
+  const capital = parseFloat(document.getElementById('icCapital').value) || 0;
+  const entry   = parseFloat(document.getElementById('icEntry').value)   || 0;
+  const stop    = parseFloat(document.getElementById('icStop').value)    || 0;
+  const riskPct = parseFloat(document.getElementById('icRiskPct').value) || 2;
+  const el      = document.getElementById('icCalcOut');
+
+  if (!entry || !stop || entry <= stop) {
+    el.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Enter valid Entry &gt; Stop Loss.</p>';
+    return;
+  }
+
+  const maxLoss  = capital * (riskPct / 100);
+  const riskPer  = entry - stop;
+  const shares   = Math.floor(maxLoss / riskPer);
+  const posVal   = shares * entry;
+  const posValPct= (posVal / capital * 100).toFixed(1);
+  const t1       = entry + riskPer * 1.5;
+  const t2       = entry + riskPer * 2.5;
+  const t3       = entry + riskPer * 4.0;
+  const be       = entry;                  // breakeven after moving SL at +2R
+  const addAt    = entry + riskPer * 1.5;  // pyramid add trigger
+
+  el.innerHTML = `
+    <div class="ic-calc-row"><span>Capital at Risk</span><strong style="color:var(--red)">₹${maxLoss.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
+    <div class="ic-calc-row"><span>Risk Per Share</span><strong>₹${riskPer.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>Position Size</span><strong style="color:#f59e0b">${shares.toLocaleString('en-IN')} shares</strong></div>
+    <div class="ic-calc-row"><span>Position Value</span><strong>₹${posVal.toLocaleString('en-IN',{maximumFractionDigits:0})} (${posValPct}%)</strong></div>
+    <hr style="border-color:var(--border);margin:8px 0">
+    <div class="ic-calc-row"><span>T1 @ 1.5R — exit 40%</span><strong style="color:var(--green)">₹${t1.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>T2 @ 2.5R — exit 40%</span><strong style="color:var(--green)">₹${t2.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>T3 trail 20%</span><strong style="color:var(--green)">₹${t3.toFixed(2)}</strong></div>
+    <hr style="border-color:var(--border);margin:8px 0">
+    <div class="ic-calc-row"><span>At +2R → SL to breakeven</span><strong>₹${be.toFixed(2)}</strong></div>
+    <div class="ic-calc-row"><span>Pyramid add trigger (+1.5R)</span><strong style="color:#f59e0b">₹${addAt.toFixed(2)}</strong></div>
+    <div class="ic-calc-row" style="font-size:10px;color:var(--text-dim);margin-top:4px">
+      <span>Max 6 positions → heat</span><strong>${(riskPct * 6).toFixed(1)}%</strong>
     </div>
   `;
 }
