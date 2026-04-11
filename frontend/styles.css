@@ -632,13 +632,19 @@ body {
   .page-tabs {
     order: 3;
     width: 100%;
-    justify-content: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
   }
-  .page-tab { flex: 1; text-align: center; padding: 8px 10px; }
+  .page-tabs::-webkit-scrollbar { display: none; }
+  .page-tab { flex-shrink: 0; padding: 7px 12px; font-size: 11px; }
   .summary-row { padding: 12px 12px; }
   .filter-bar { padding: 0 12px 10px; }
   .table-section { padding: 0 12px 32px; }
-  .search-wrap input { width: 160px; }
+  .search-wrap input { width: 140px; }
   .detail-grid { grid-template-columns: 1fr; }
 }
 
@@ -1123,7 +1129,6 @@ body {
 @media (max-width: 600px) {
   .nifty-section { padding: 0 12px; }
   .nifty-sub-header { flex-direction: column; align-items: flex-start; }
-  .page-tabs { display: none; }   /* collapse tabs on very small screens */
   .nifty-levels-grid { grid-template-columns: repeat(2, 1fr); }
   .nifty-overview-card { flex-direction: column; }
 }

@@ -875,7 +875,7 @@ async function runStrategyAnalysis() {
     }
     const data = await res.json();
     renderStrategyPage(data);
-    showToast('Strategy scan complete!', 'success');
+    showToast('Sniper scan complete!', 'success');
   } catch (e) {
     showToast(`Strategy error: ${e.message}`, 'error');
     console.error(e);
@@ -884,7 +884,7 @@ async function runStrategyAnalysis() {
     hideLoader();
     btn.disabled = false;
     btn.classList.remove('loading');
-    btn.textContent = '🎯 Run Strategy';
+    btn.textContent = '🎯 Run Sniper';
   }
 }
 
