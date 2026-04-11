@@ -219,6 +219,67 @@ def get_results_by_date(run_date: str) -> dict:
         conn.close()
 
 
+def get_high_prob_stocks(limit: int = 40) -> dict:
+    """
+    Return the top actionable stocks from the latest Screener run for use
+    as IntraContra's dynamic watchlist.
+
+    Pulls HIGH_PROB_LONG, HIGH_PROB_SHORT, and WATCHLIST stocks ordered by
+    rank (best first), up to `limit` stocks.  Returns a dict in the same
+    shape as IC_WATCHLIST: { "SYMBOL.NS": {"name": ..., "sector": ...} }
+
+    Returns an empty dict if no Screener results exist yet (first run /
+    Screener hasn't been executed), so the caller can fall back gracefully.
+    """
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+
+        # Latest run date that has HIGH_PROB or WATCHLIST entries
+        c.execute("""
+            SELECT MAX(run_date) as max_date FROM daily_results
+            WHERE category IN ('HIGH_PROB_LONG', 'HIGH_PROB_SHORT', 'WATCHLIST')
+        """)
+        row = c.fetchone()
+        if not row or not row["max_date"]:
+            return {}
+
+        run_date = row["max_date"]
+
+        # Pull top stocks ordered: HIGH_PROB first (lower rank = better), then WATCHLIST
+        c.execute("""
+            SELECT symbol, name, sector, category, long_score, short_score, rank
+            FROM daily_results
+            WHERE run_date = ?
+              AND category IN ('HIGH_PROB_LONG', 'HIGH_PROB_SHORT', 'WATCHLIST')
+            ORDER BY
+                CASE category
+                    WHEN 'HIGH_PROB_LONG'  THEN 1
+                    WHEN 'HIGH_PROB_SHORT' THEN 2
+                    WHEN 'WATCHLIST'       THEN 3
+                END,
+                rank ASC
+            LIMIT ?
+        """, (run_date, limit))
+
+        rows = c.fetchall()
+        result = {}
+        for r in rows:
+            sym = r["symbol"]
+            # Ensure .NS suffix for yfinance compatibility
+            if not sym.endswith(".NS") and not sym.endswith(".BO"):
+                sym = sym + ".NS"
+            result[sym] = {
+                "name":     r["name"] or sym,
+                "sector":   r["sector"] or "Unknown",
+                "category": r["category"],
+            }
+
+        return result, run_date
+    finally:
+        conn.close()
+
+
 def get_available_dates() -> list:
     """Get list of all dates with results."""
     conn = get_connection()

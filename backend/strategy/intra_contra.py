@@ -419,48 +419,120 @@ def _market_context() -> dict:
 # ─── Main Entry Point ─────────────────────────────────────────────────────────
 
 def run_intra_contra(_universe: dict = None) -> dict:
-    """Run pre-market analysis on the 20-stock curated watchlist."""
+    """
+    Run pre-market analysis on a dynamic watchlist sourced from the Screener.
+
+    Watchlist resolution (in priority order):
+      1. HIGH_PROB_LONG + HIGH_PROB_SHORT + WATCHLIST stocks from the latest
+         Screener run (stored in SQLite by the daily pipeline).
+      2. The fixed IC_WATCHLIST baseline — always merged in so the 20 most
+         liquid F&O names are never dropped even if the Screener misses them.
+      3. Pure IC_WATCHLIST fallback if the Screener has never been run (DB empty).
+
+    This means IntraContra's coverage grows automatically as the Screener
+    identifies new setups — no manual watchlist maintenance needed.
+    """
     try:
         logger.info("[IntraContra] Market context…")
         market_ctx = _market_context()
 
-        logger.info("[IntraContra] Processing %d watchlist stocks…", len(IC_WATCHLIST))
+        # ── Build dynamic watchlist ───────────────────────────────────────────
+        watchlist        = {}
+        watchlist_source = "default"
+        screener_date    = None
+
+        try:
+            from storage.db import get_high_prob_stocks
+            db_result = get_high_prob_stocks(limit=40)
+
+            # get_high_prob_stocks returns (dict, date) or empty dict on no data
+            if isinstance(db_result, tuple):
+                db_stocks, screener_date = db_result
+            else:
+                db_stocks = db_result
+
+            if db_stocks:
+                watchlist        = db_stocks
+                watchlist_source = "screener"
+                logger.info(
+                    "[IntraContra] Dynamic watchlist: %d stocks from Screener (%s)",
+                    len(db_stocks), screener_date,
+                )
+        except Exception as e:
+            logger.warning("[IntraContra] Could not load Screener results from DB: %s", e)
+
+        # Always merge the baseline IC_WATCHLIST so the 20 core liquid names
+        # are present regardless of whether the Screener caught them.
+        # Screener stocks take priority (they carry richer category metadata).
+        if watchlist:
+            merged = {**IC_WATCHLIST, **watchlist}   # screener overwrites on collision
+            logger.info(
+                "[IntraContra] Final watchlist: %d stocks (%d from Screener + IC baseline, deduplicated)",
+                len(merged), len(watchlist),
+            )
+        else:
+            merged           = IC_WATCHLIST
+            watchlist_source = "default"
+            logger.info(
+                "[IntraContra] No Screener data in DB — using fixed IC_WATCHLIST (%d stocks)",
+                len(merged),
+            )
+
+        # ── Process all watchlist stocks in parallel ──────────────────────────
+        logger.info("[IntraContra] Processing %d stocks…", len(merged))
         results = []
-        with ThreadPoolExecutor(max_workers=8) as ex:
+        with ThreadPoolExecutor(max_workers=10) as ex:
             futs = {ex.submit(_process_stock, sym, info): sym
-                    for sym, info in IC_WATCHLIST.items()}
+                    for sym, info in merged.items()}
             for fut in as_completed(futs):
                 r = fut.result()
                 if r is not None:
+                    sym_key = r["raw_symbol"]
+                    if sym_key in watchlist:
+                        r["watchlist_source"]  = "screener"
+                        r["screener_category"] = watchlist[sym_key].get("category", "")
+                    else:
+                        r["watchlist_source"]  = "default"
+                        r["screener_category"] = ""
                     results.append(r)
 
-        results.sort(key=lambda x: (-x["setup_count"], -int(x["qualified"]),
-                                    x["symbol"]))
+        # Sort: setups first, then qualified, then screener-sourced (higher priority), then alpha
+        results.sort(key=lambda x: (
+            -x["setup_count"],
+            -int(x["qualified"]),
+            0 if x["watchlist_source"] == "screener" else 1,
+            x["symbol"],
+        ))
 
-        total        = len(results)
-        qualified    = sum(1 for s in results if s["qualified"])
-        w_setups     = sum(1 for s in results if s["has_setup"])
-        orb_long     = sum(1 for s in results for st in s["setups"] if st["setup"] == "PDH_BREAKOUT")
-        orb_short    = sum(1 for s in results for st in s["setups"] if st["setup"] == "PDL_BREAKDOWN")
-        sess_rev     = sum(1 for s in results for st in s["setups"]
-                           if st["setup"] in ("SESSION_REVERSION_LONG", "SESSION_REVERSION_SHORT"))
-        gap_plays    = sum(1 for s in results for st in s["setups"]
-                           if st["setup"] in ("GAP_UP", "GAP_DOWN"))
-        above_stp    = sum(1 for s in results if s.get("above_session_tp"))
+        total         = len(results)
+        from_screener = sum(1 for s in results if s.get("watchlist_source") == "screener")
+        qualified_n   = sum(1 for s in results if s["qualified"])
+        w_setups      = sum(1 for s in results if s["has_setup"])
+        pdh_breakout  = sum(1 for s in results for st in s["setups"] if st["setup"] == "PDH_BREAKOUT")
+        pdl_breakdown = sum(1 for s in results for st in s["setups"] if st["setup"] == "PDL_BREAKDOWN")
+        sess_rev      = sum(1 for s in results for st in s["setups"]
+                            if st["setup"] in ("SESSION_REVERSION_LONG", "SESSION_REVERSION_SHORT"))
+        gap_plays     = sum(1 for s in results for st in s["setups"]
+                            if st["setup"] in ("GAP_UP", "GAP_DOWN"))
+        above_stp     = sum(1 for s in results if s.get("above_session_tp"))
         above_20dvwap = sum(1 for s in results if s.get("above_20d_vwap"))
 
         return {
-            "status":         "success",
-            "run_date":       datetime.now().strftime("%Y-%m-%d"),
-            "run_time":       datetime.now().strftime("%H:%M:%S"),
-            "market_context": market_ctx,
-            "stocks":         results,
+            "status":           "success",
+            "run_date":         datetime.now().strftime("%Y-%m-%d"),
+            "run_time":         datetime.now().strftime("%H:%M:%S"),
+            "watchlist_source": watchlist_source,
+            "screener_date":    screener_date,
+            "market_context":   market_ctx,
+            "stocks":           results,
             "summary": {
                 "total":            total,
-                "qualified":        qualified,
+                "from_screener":    from_screener,
+                "from_baseline":    total - from_screener,
+                "qualified":        qualified_n,
                 "with_setups":      w_setups,
-                "pdh_breakout":     orb_long,
-                "pdl_breakdown":    orb_short,
+                "pdh_breakout":     pdh_breakout,
+                "pdl_breakdown":    pdl_breakdown,
                 "session_rev":      sess_rev,
                 "gap_plays":        gap_plays,
                 "above_session_tp": above_stp,

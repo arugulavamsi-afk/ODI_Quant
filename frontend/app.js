@@ -1412,6 +1412,29 @@ function renderIntraContra(data) {
     ? `Last: ${data.run_date} ${data.run_time}` : (data.run_date || '–');
   document.getElementById('icLastRun').textContent = ts;
 
+  // Watchlist source banner
+  const bannerEl = document.getElementById('icSourceBanner');
+  if (bannerEl) {
+    if (data.watchlist_source === 'screener' && data.screener_date) {
+      const s = data.summary || {};
+      bannerEl.style.display = '';
+      bannerEl.innerHTML = `
+        <span style="color:var(--green)">&#9679;</span>
+        Watchlist sourced from Screener run
+        <strong>${data.screener_date}</strong>
+        &mdash; ${s.from_screener ?? '?'} HIGH PROB/WATCHLIST stocks
+        + ${s.from_baseline ?? '?'} baseline F&amp;O names
+      `;
+    } else {
+      bannerEl.style.display = '';
+      bannerEl.innerHTML = `
+        <span style="color:#f59e0b">&#9651;</span>
+        Using default watchlist &mdash; run the Stock Screener first to get
+        a dynamic, signal-driven watchlist here.
+      `;
+    }
+  }
+
   renderIcCtx(data.market_context || {});
   renderIcTimeBar();
   icStocks = data.stocks || [];
@@ -1497,13 +1520,14 @@ function renderIcTimeBar() {
 function renderIcChips(s) {
   document.getElementById('icChips').innerHTML = `
     <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.total ?? 0}</span><span class="ic-chip-lbl">Watchlist</span></div>
+    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.from_screener ?? 0}</span><span class="ic-chip-lbl">From Screener</span></div>
     <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.qualified ?? 0}</span><span class="ic-chip-lbl">Qualified</span></div>
     <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.with_setups ?? 0}</span><span class="ic-chip-lbl">Has Setup</span></div>
-    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.orb_long ?? 0}</span><span class="ic-chip-lbl">ORB Long</span></div>
-    <div class="ic-chip ic-chip-red"><span class="ic-chip-num">${s.orb_short ?? 0}</span><span class="ic-chip-lbl">ORB Short</span></div>
-    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.vwap_rev ?? 0}</span><span class="ic-chip-lbl">VWAP Rev</span></div>
+    <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.pdh_breakout ?? 0}</span><span class="ic-chip-lbl">PDH Break</span></div>
+    <div class="ic-chip ic-chip-red"><span class="ic-chip-num">${s.pdl_breakdown ?? 0}</span><span class="ic-chip-lbl">PDL Break</span></div>
+    <div class="ic-chip ic-chip-orange"><span class="ic-chip-num">${s.session_rev ?? 0}</span><span class="ic-chip-lbl">Sess Rev</span></div>
     <div class="ic-chip ic-chip-purple"><span class="ic-chip-num">${s.gap_plays ?? 0}</span><span class="ic-chip-lbl">Gap Plays</span></div>
-    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.above_vwap ?? 0}</span><span class="ic-chip-lbl">Above VWAP</span></div>
+    <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.above_session_tp ?? 0}</span><span class="ic-chip-lbl">Above STP</span></div>
   `;
 }
 
@@ -1526,15 +1550,17 @@ function applyIcFilters() {
   if (icFilter === 'HAS_SETUP') {
     f = f.filter(s => s.has_setup);
   } else if (icFilter === 'ABOVE_VWAP') {
-    f = f.filter(s => s.above_vwap);
+    f = f.filter(s => s.above_session_tp || s.above_20d_vwap);
   } else if (icFilter === 'QUALIFIED') {
     f = f.filter(s => s.qualified);
+  } else if (icFilter === 'SCREENER') {
+    f = f.filter(s => s.watchlist_source === 'screener');
   } else if (icFilter === 'ORB_LONG') {
-    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'ORB_LONG'));
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'PDH_BREAKOUT'));
   } else if (icFilter === 'ORB_SHORT') {
-    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'ORB_SHORT'));
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'PDL_BREAKDOWN'));
   } else if (icFilter === 'VWAP_REVERSION') {
-    f = f.filter(s => s.setups && s.setups.some(st => st.setup.startsWith('VWAP_REVERSION')));
+    f = f.filter(s => s.setups && s.setups.some(st => st.setup.startsWith('SESSION_REVERSION')));
   } else if (icFilter === 'GAP_PLAY') {
     f = f.filter(s => s.setups && s.setups.some(st => st.setup === 'GAP_UP' || st.setup === 'GAP_DOWN'));
   }
@@ -1576,8 +1602,8 @@ function buildIcRow(s) {
     ? `<span style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`
     : '–';
 
-  // VWAP deviation
-  const vd = s.vwap_dev_pct;
+  // Session TP deviation (replaces old vwap_dev_pct)
+  const vd = s.session_tp_dev;
   const vdCol = vd != null
     ? (vd >= 1.5 ? 'var(--red)' : vd <= -1.5 ? 'var(--green)' : 'var(--text-muted)')
     : 'var(--text-dim)';
@@ -1603,13 +1629,17 @@ function buildIcRow(s) {
 
   // Setup badges
   const setupCols = {
-    ORB_LONG: 'var(--green)', ORB_SHORT: 'var(--red)',
-    VWAP_REVERSION_LONG: '#f59e0b', VWAP_REVERSION_SHORT: '#f59e0b',
+    PDH_BREAKOUT: 'var(--green)', PDL_BREAKDOWN: 'var(--red)',
+    SESSION_REVERSION_LONG: '#f59e0b', SESSION_REVERSION_SHORT: '#f59e0b',
     GAP_UP: '#4a9eff', GAP_DOWN: '#a855f7',
   };
-  const aboveVwapDot = s.above_vwap ? `<span style="color:var(--green);font-size:10px"> ↑V</span>` : '';
+  const aboveSTPDot = s.above_session_tp ? `<span style="color:var(--green);font-size:10px" title="Above Session TP"> ↑S</span>` : '';
+  const screenerBadge = s.watchlist_source === 'screener'
+    ? `<span style="background:#4a9eff22;color:#4a9eff;border:1px solid #4a9eff44;border-radius:3px;padding:1px 4px;font-size:9px;margin-left:3px"
+            title="Sourced from Screener · ${s.screener_category || ''}">${s.screener_category ? s.screener_category.replace('HIGH_PROB_','').replace('_',' ') : 'SCR'}</span>`
+    : '';
   const setupsHtml = !s.setups?.length
-    ? `<span style="color:var(--text-dim);font-size:10px">${s.above_vwap ? '↑ VWAP' : s.qualified ? 'Qualified' : '–'}</span>`
+    ? `<span style="color:var(--text-dim);font-size:10px">${s.above_session_tp ? '↑ STP' : s.qualified ? 'Qualified' : '–'}</span>`
     : s.setups.map(st => {
         const c = setupCols[st.setup] || '#f59e0b';
         return `<span class="ic-setup-badge" style="background:${c}22;color:${c};border:1px solid ${c}44">${st.icon} ${st.setup_label}</span>`;
@@ -1618,7 +1648,7 @@ function buildIcRow(s) {
   return `
     <tr id="${rowId}" class="ic-stock-row ${s.has_setup ? 'ic-has-setup' : ''}" onclick="toggleIcRow('${id}')">
       <td class="ic-expand">${icExpanded.has(id) ? '▼' : '▶'}</td>
-      <td><strong>${s.symbol}</strong>${aboveVwapDot}<br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
+      <td><strong>${s.symbol}</strong>${aboveSTPDot}${screenerBadge}<br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
       <td><span style="color:var(--text-muted)">${s.sector}</span></td>
       <td style="font-family:var(--mono)">₹${fmt(s.cmp)}</td>
       <td>${chgHtml}</td>
@@ -1639,7 +1669,8 @@ function buildIcDetail(s) {
   const levelsHtml = `
     <div class="ic-ema-ladder">
       <div class="ic-ema-row"><span>CMP</span><span style="font-family:var(--mono);color:var(--text)">₹${fmt(s.cmp)}</span></div>
-      <div class="ic-ema-row"><span>VWAP (20d)</span><span style="font-family:var(--mono);color:#f59e0b">₹${fmt(s.vwap_20)}</span></div>
+      <div class="ic-ema-row"><span>Session TP</span><span style="font-family:var(--mono);color:#f59e0b">₹${fmt(s.session_tp)}${s.session_tp_dev != null ? ` <span style="font-size:10px">(${s.session_tp_dev >= 0 ? '+' : ''}${s.session_tp_dev.toFixed(1)}%)</span>` : ''}</span></div>
+      <div class="ic-ema-row"><span>VWAP (20d swing)</span><span style="font-family:var(--mono);color:var(--text-muted)">₹${fmt(s.vwap_20d)}</span></div>
       <div class="ic-ema-row"><span>PDH</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.pdh)}</span></div>
       <div class="ic-ema-row"><span>PDL</span><span style="font-family:var(--mono);color:var(--red)">₹${fmt(s.pdl)}</span></div>
       <div class="ic-ema-row"><span>Wk Pivot</span><span style="font-family:var(--mono)">₹${fmt(s.wk_pivot)}</span></div>
