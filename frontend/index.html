@@ -24,6 +24,9 @@
     <button class="page-tab" data-page="nifty" onclick="showPage('nifty')">
       ⚡ NIFTY Options
     </button>
+    <button class="page-tab" data-page="strategy" onclick="showPage('strategy')">
+      🎯 Trend Strategy
+    </button>
   </div>
 
   <div class="nav-controls">
@@ -248,6 +251,169 @@
 
   </div><!-- /niftyContent -->
 </div><!-- /niftyPage -->
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- TREND PULLBACK STRATEGY PAGE                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div id="strategyPage" style="display:none">
+
+  <!-- Sub-header -->
+  <div class="strat-sub-header">
+    <div>
+      <span class="strat-sub-title">Ride the Trend, Snipe the Pullback</span>
+      <span class="strat-sub-desc">Market context → sector rotation → quality gate → pattern arsenal</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="last-run" id="stratLastRun">–</span>
+      <button class="btn-strat-run" id="stratRunBtn" onclick="runStrategyAnalysis()">
+        🎯 Run Strategy
+      </button>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="stratEmpty" class="strat-empty">
+    <div style="font-size:52px;margin-bottom:12px">🎯</div>
+    <p>Click <strong>Run Strategy</strong> to scan the market using the full 7-phase framework.</p>
+    <p style="font-size:11px;color:var(--text-dim);margin-top:6px">
+      Fetches live Nifty + VIX + sectoral indices + stock data. Runtime ~90–120 s.
+    </p>
+  </div>
+
+  <!-- Content -->
+  <div id="stratContent" style="display:none">
+
+    <!-- ── Phase 1: Market Context ──────────────────────────────────────── -->
+    <div class="strat-section">
+      <div class="strat-section-title">
+        <span class="strat-phase-badge">Phase 1</span> Market Context Filter
+      </div>
+      <div class="strat-ctx-grid" id="stratCtxGrid"><!-- JS --></div>
+    </div>
+
+    <!-- ── Phase 2: Sector Rotation ─────────────────────────────────────── -->
+    <div class="strat-section">
+      <div class="strat-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span><span class="strat-phase-badge">Phase 2</span> Sector Rotation — 4-Week RS vs Nifty</span>
+        <span class="strat-quarter-badge" id="stratQuarterBadge">–</span>
+      </div>
+      <div class="strat-sector-table-wrap">
+        <table class="strat-sector-table">
+          <thead>
+            <tr>
+              <th>Rank</th><th>Sector</th><th>4W Return</th>
+              <th>1W Return</th><th>RS vs Nifty</th><th>Momentum</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="stratSectorBody"><!-- JS --></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Phase 3+4: Stock Setups ──────────────────────────────────────── -->
+    <div class="strat-section">
+      <div class="strat-section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <span><span class="strat-phase-badge">Phase 3+4</span> Quality Gate &amp; Pattern Arsenal</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap" id="stratPatternTabs">
+          <button class="strat-tab active" data-pf="ALL"           onclick="setStratFilter(this,'ALL')">All Stocks</button>
+          <button class="strat-tab" data-pf="WITH_PATTERN"        onclick="setStratFilter(this,'WITH_PATTERN')">🎯 Has Setup</button>
+          <button class="strat-tab" data-pf="EMA_PULLBACK"        onclick="setStratFilter(this,'EMA_PULLBACK')">📉 EMA Pullback</button>
+          <button class="strat-tab" data-pf="BASE_BREAKOUT"       onclick="setStratFilter(this,'BASE_BREAKOUT')">🚀 Base Breakout</button>
+          <button class="strat-tab" data-pf="GAP_REVERSAL"        onclick="setStratFilter(this,'GAP_REVERSAL')">⚡ Gap Reversal</button>
+        </div>
+      </div>
+
+      <!-- Summary chips -->
+      <div class="strat-summary-chips" id="stratSummaryChips"><!-- JS --></div>
+
+      <!-- Stock table -->
+      <div class="strat-stock-table-wrap">
+        <table class="strat-stock-table" id="stratStockTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th onclick="sortStrat('symbol')">Symbol ↕</th>
+              <th>Sector</th>
+              <th onclick="sortStrat('cmp')">CMP ↕</th>
+              <th onclick="sortStrat('chg_pct')">Chg% ↕</th>
+              <th>Trend</th>
+              <th>EMA 21/50/200</th>
+              <th onclick="sortStrat('dist_52wh')">52W High ↕</th>
+              <th onclick="sortStrat('avg_daily_val_cr')">Vol (Cr) ↕</th>
+              <th>Patterns</th>
+            </tr>
+          </thead>
+          <tbody id="stratStockBody"><!-- JS --></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Phase 5+6: Position Calculator ──────────────────────────────── -->
+    <div class="strat-section">
+      <div class="strat-section-title">
+        <span class="strat-phase-badge">Phase 5+6</span> Position Sizing &amp; Scale-Out Calculator
+      </div>
+      <div class="strat-calc-grid">
+        <!-- Calculator inputs -->
+        <div class="strat-calc-card">
+          <div class="strat-calc-title">Position Size Formula</div>
+          <div class="strat-calc-subtitle">Capital × 1.5% ÷ (Entry − Stop Loss)</div>
+          <div class="strat-calc-fields">
+            <div class="strat-field">
+              <label>Total Capital (₹)</label>
+              <input type="number" id="calcCapital" value="1000000" oninput="calcPosition()" />
+            </div>
+            <div class="strat-field">
+              <label>Entry Price (₹)</label>
+              <input type="number" id="calcEntry" value="" placeholder="e.g. 500" oninput="calcPosition()" />
+            </div>
+            <div class="strat-field">
+              <label>Stop Loss (₹)</label>
+              <input type="number" id="calcStop" value="" placeholder="e.g. 480" oninput="calcPosition()" />
+            </div>
+            <div class="strat-field">
+              <label>Risk % per Trade</label>
+              <input type="number" id="calcRiskPct" value="1.5" step="0.1" min="0.5" max="3" oninput="calcPosition()" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Calculator output -->
+        <div class="strat-calc-card strat-calc-output" id="calcOutput">
+          <div class="strat-calc-title">Trade Plan</div>
+          <div id="calcResults" class="strat-calc-results">
+            <p style="color:var(--text-dim);font-size:12px">Fill in Entry and Stop Loss to calculate.</p>
+          </div>
+        </div>
+
+        <!-- Scale-out rules -->
+        <div class="strat-calc-card">
+          <div class="strat-calc-title">Scale-Out Rules (Phase 6)</div>
+          <div class="strat-scaleout-rules">
+            <div class="strat-rule">
+              <span class="strat-rule-icon">1</span>
+              <span>At <strong>1:2 R:R</strong> — exit 50% of position, move stop to breakeven</span>
+            </div>
+            <div class="strat-rule">
+              <span class="strat-rule-icon">2</span>
+              <span>Trail remaining 50% using <strong>10-day EMA</strong> — exit only on daily close below it</span>
+            </div>
+            <div class="strat-rule">
+              <span class="strat-rule-icon">3</span>
+              <span>Max <strong>6 open positions</strong> — portfolio heat ≤ 12%</span>
+            </div>
+            <div class="strat-rule">
+              <span class="strat-rule-icon">!</span>
+              <span>Monthly −8% drawdown → <strong>stop trading</strong>, review every loss</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /stratContent -->
+</div><!-- /strategyPage -->
 
 
 <!-- ── LOADER OVERLAY ──────────────────────────────────────────────────── -->

@@ -270,6 +270,32 @@ async def get_nifty_analysis():
         raise HTTPException(status_code=500, detail=f"NIFTY analysis failed: {str(e)}")
 
 
+@app.get("/api/strategy/trend-pullback")
+async def get_trend_pullback_strategy():
+    """
+    "Ride the Trend, Snipe the Pullback" strategy engine.
+    Phases: Market Context → Sector Rotation → Quality Gate → Pattern Detection.
+    Typical runtime: 60–120 s (fetches live data for all qualifying stocks).
+    """
+    try:
+        from strategy.trend_pullback import run_trend_pullback_strategy
+        logger.info("Trend-Pullback strategy: starting…")
+        result = run_trend_pullback_strategy(STOCK_UNIVERSE)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result.get("error", "Strategy failed"))
+        logger.info(
+            "Trend-Pullback complete — %d qualified, %d with patterns",
+            result["summary"]["total_qualified"],
+            result["summary"]["with_patterns"],
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Trend-Pullback error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Strategy failed: {str(e)}")
+
+
 @app.get("/api/health")
 async def health_check():
     return {

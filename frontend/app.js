@@ -485,11 +485,13 @@ function showPage(page) {
     t.classList.toggle('active', t.dataset.page === page);
   });
 
-  const isScanner = page === 'scanner';
-  document.getElementById('scannerPage').style.display = isScanner ? '' : 'none';
-  document.getElementById('niftyPage').style.display   = isScanner ? 'none' : '';
-  document.getElementById('runBtn').style.display      = isScanner ? '' : 'none';
-  document.getElementById('lastRunTime').style.display = isScanner ? '' : 'none';
+  const isScanner  = page === 'scanner';
+  const isStrategy = page === 'strategy';
+  document.getElementById('scannerPage').style.display  = isScanner  ? '' : 'none';
+  document.getElementById('niftyPage').style.display    = page === 'nifty' ? '' : 'none';
+  document.getElementById('strategyPage').style.display = isStrategy ? '' : 'none';
+  document.getElementById('runBtn').style.display       = isScanner  ? '' : 'none';
+  document.getElementById('lastRunTime').style.display  = isScanner  ? '' : 'none';
 }
 
 // ── NIFTY data load & render ──────────────────────────────────────────────
@@ -830,4 +832,492 @@ function renderNiftyExplanation(oa) {
   // Disclaimer
   const disc = oa.disclaimer;
   if (disc) document.getElementById('niftyDisclaimer').textContent = '⚠ ' + disc;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TREND PULLBACK STRATEGY PAGE
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let stratStocks    = [];
+let stratFilter    = 'ALL';
+let stratSortKey   = 'pattern_count';
+let stratSortAsc   = false;
+let stratExpandedRows = new Set();
+
+// ── Data fetch ────────────────────────────────────────────────────────────
+async function runStrategyAnalysis() {
+  const btn = document.getElementById('stratRunBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '⏳ Scanning…';
+  showLoader('Fetching Nifty & VIX data…');
+
+  const msgs = [
+    'Computing sector relative strength…',
+    'Applying quality gate filters…',
+    'Scanning for EMA pullbacks…',
+    'Detecting base breakouts…',
+    'Checking gap-up reversals…',
+    'Calculating position sizes…',
+    'Ranking setups…',
+  ];
+  let mi = 0;
+  const msgTimer = setInterval(() => {
+    document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
+  }, 9000);
+
+  try {
+    const res = await fetch(`${API}/api/strategy/trend-pullback`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderStrategyPage(data);
+    showToast('Strategy scan complete!', 'success');
+  } catch (e) {
+    showToast(`Strategy error: ${e.message}`, 'error');
+    console.error(e);
+  } finally {
+    clearInterval(msgTimer);
+    hideLoader();
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = '🎯 Run Strategy';
+  }
+}
+
+// ── Master renderer ───────────────────────────────────────────────────────
+function renderStrategyPage(data) {
+  document.getElementById('stratEmpty').style.display   = 'none';
+  document.getElementById('stratContent').style.display = '';
+
+  const ts = data.run_date && data.run_time
+    ? `Last: ${data.run_date} ${data.run_time}` : (data.run_date || '–');
+  document.getElementById('stratLastRun').textContent = ts;
+
+  renderStratCtx(data.market_context || {});
+  renderStratSectors(data.sector_rotation || {});
+  stratStocks = data.stocks || [];
+  renderStratSummaryChips(data.summary || {});
+  applyStratFilters();
+}
+
+// ── Phase 1 — Market Context ──────────────────────────────────────────────
+function renderStratCtx(ctx) {
+  const biasColor = ctx.bias_color === 'green' ? 'var(--green)'
+                  : ctx.bias_color === 'red'   ? 'var(--red)'
+                  : 'var(--yellow)';
+
+  const niftyChange = ctx.nifty_change_pct != null
+    ? `<span style="color:${ctx.nifty_change_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13px">
+        ${ctx.nifty_change_pct >= 0 ? '+' : ''}${ctx.nifty_change_pct.toFixed(2)}%
+       </span>` : '';
+
+  const aboveHtml = ctx.above_50ema == null ? '–'
+    : ctx.above_50ema
+      ? '<span style="color:var(--green)">▲ Above 50 EMA</span>'
+      : '<span style="color:var(--red)">▼ Below 50 EMA</span>';
+
+  const vixColor = ctx.vix_status === 'LOW'      ? 'var(--green)'
+                 : ctx.vix_status === 'ELEVATED' ? 'var(--yellow)'
+                 : ctx.vix_status === 'HIGH'      ? 'var(--red)'
+                 : 'var(--text-muted)';
+
+  document.getElementById('stratCtxGrid').innerHTML = `
+    <div class="strat-ctx-card">
+      <div class="strat-ctx-label">Nifty 50</div>
+      <div class="strat-ctx-val" style="color:var(--text)">
+        ${ctx.nifty_price != null ? '₹' + ctx.nifty_price.toLocaleString('en-IN') : '–'}
+        ${niftyChange}
+      </div>
+      <div class="strat-ctx-sub">${aboveHtml}</div>
+      <div class="strat-ctx-sub" style="color:var(--text-muted)">
+        50 EMA: ${ctx.nifty_50ema != null ? '₹' + ctx.nifty_50ema.toLocaleString('en-IN') : '–'}
+        &nbsp;|&nbsp;
+        200 EMA: ${ctx.nifty_200ema != null ? '₹' + ctx.nifty_200ema.toLocaleString('en-IN') : '–'}
+      </div>
+    </div>
+    <div class="strat-ctx-card">
+      <div class="strat-ctx-label">India VIX</div>
+      <div class="strat-ctx-val" style="color:${vixColor}">
+        ${ctx.vix_value != null ? ctx.vix_value.toFixed(1) : '–'}
+      </div>
+      <div class="strat-ctx-sub" style="color:${vixColor}">${ctx.vix_status || '–'}</div>
+      <div class="strat-ctx-sub" style="color:var(--text-muted)">${ctx.vix_label || '–'}</div>
+    </div>
+    <div class="strat-ctx-card strat-ctx-bias">
+      <div class="strat-ctx-label">Market Bias</div>
+      <div class="strat-ctx-val" style="color:${biasColor};font-size:26px">
+        ${ctx.market_bias || '–'}
+      </div>
+      <div class="strat-ctx-sub" style="color:${biasColor}">
+        ${ctx.allocation_pct}% capital allocation
+      </div>
+      <div class="strat-ctx-sub" style="color:var(--text-dim);font-size:10px;margin-top:4px">
+        Long bias requires: Nifty > 50 EMA &amp; VIX &lt; 18
+      </div>
+    </div>
+  `;
+}
+
+// ── Phase 2 — Sector Rotation ─────────────────────────────────────────────
+function renderStratSectors(sr) {
+  const qbadge = document.getElementById('stratQuarterBadge');
+  if (sr.current_quarter) {
+    qbadge.textContent = sr.current_quarter + ' seasonality: ' +
+      (sr.calendar_sectors || []).join(', ');
+  }
+
+  const tbody = document.getElementById('stratSectorBody');
+  if (!sr.sectors || !sr.sectors.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No sector data</td></tr>';
+    return;
+  }
+
+  const topSet = new Set((sr.top_sectors || []).slice(0, 3));
+  const niftyRef = sr.nifty_4w_return != null
+    ? ` <span style="color:var(--text-muted);font-size:10px">(Nifty 4W: ${sr.nifty_4w_return > 0 ? '+' : ''}${sr.nifty_4w_return}%)</span>` : '';
+
+  tbody.innerHTML = sr.sectors.map(s => {
+    const isTop = topSet.has(s.sector);
+    const rs    = s.rs_score;
+    const rsCol = rs == null ? 'var(--text-muted)'
+                : rs > 2   ? 'var(--green)'
+                : rs < -2  ? 'var(--red)'
+                : 'var(--yellow)';
+    const r4col = s.return_4w == null ? 'var(--text-muted)'
+                : s.return_4w > 0 ? 'var(--green)' : 'var(--red)';
+    const r1col = s.return_1w == null ? 'var(--text-muted)'
+                : s.return_1w > 0 ? 'var(--green)' : 'var(--red)';
+    const momHtml = s.momentum === 'ACCELERATING'
+      ? '<span style="color:var(--green)">▲ Accel</span>'
+      : '<span style="color:var(--red)">▼ Decel</span>';
+
+    return `<tr class="${isTop ? 'strat-top-sector' : ''}">
+      <td style="text-align:center;font-family:var(--mono);font-weight:700">
+        ${s.rank || '–'}${isTop ? ' 🔥' : ''}
+      </td>
+      <td><strong>${s.sector}</strong></td>
+      <td style="color:${r4col};font-family:var(--mono)">
+        ${s.return_4w != null ? (s.return_4w > 0 ? '+' : '') + s.return_4w + '%' : '–'}
+      </td>
+      <td style="color:${r1col};font-family:var(--mono)">
+        ${s.return_1w != null ? (s.return_1w > 0 ? '+' : '') + s.return_1w + '%' : '–'}
+      </td>
+      <td style="color:${rsCol};font-family:var(--mono);font-weight:600">
+        ${rs != null ? (rs > 0 ? '+' : '') + rs + '%' : '–'}
+      </td>
+      <td>${s.momentum !== '—' ? momHtml : '–'}</td>
+      <td>${isTop ? '<span class="strat-top-badge">TOP SECTOR</span>' : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Phase 3+4 — Summary chips ─────────────────────────────────────────────
+function renderStratSummaryChips(summary) {
+  document.getElementById('stratSummaryChips').innerHTML = `
+    <div class="strat-chip strat-chip-blue">
+      <span class="strat-chip-num">${summary.total_qualified ?? 0}</span>
+      <span class="strat-chip-lbl">Qualified (200 EMA + Volume)</span>
+    </div>
+    <div class="strat-chip strat-chip-green">
+      <span class="strat-chip-num">${summary.with_patterns ?? 0}</span>
+      <span class="strat-chip-lbl">Active Setups</span>
+    </div>
+    <div class="strat-chip strat-chip-yellow">
+      <span class="strat-chip-num">${summary.ema_pullback_count ?? 0}</span>
+      <span class="strat-chip-lbl">📉 EMA Pullbacks</span>
+    </div>
+    <div class="strat-chip strat-chip-green">
+      <span class="strat-chip-num">${summary.base_breakout_count ?? 0}</span>
+      <span class="strat-chip-lbl">🚀 Base Breakouts</span>
+    </div>
+    <div class="strat-chip strat-chip-blue">
+      <span class="strat-chip-num">${summary.gap_reversal_count ?? 0}</span>
+      <span class="strat-chip-lbl">⚡ Gap Reversals</span>
+    </div>
+  `;
+}
+
+// ── Filter + sort ─────────────────────────────────────────────────────────
+function setStratFilter(el, pf) {
+  document.querySelectorAll('.strat-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  stratFilter = pf;
+  applyStratFilters();
+}
+
+function sortStrat(key) {
+  if (stratSortKey === key) stratSortAsc = !stratSortAsc;
+  else { stratSortKey = key; stratSortAsc = key === 'symbol'; }
+  applyStratFilters();
+}
+
+function applyStratFilters() {
+  let filtered = [...stratStocks];
+
+  if (stratFilter === 'WITH_PATTERN') {
+    filtered = filtered.filter(s => s.has_setup);
+  } else if (['EMA_PULLBACK', 'BASE_BREAKOUT', 'GAP_REVERSAL'].includes(stratFilter)) {
+    filtered = filtered.filter(s =>
+      s.patterns && s.patterns.some(p => p.pattern === stratFilter)
+    );
+  }
+
+  filtered.sort((a, b) => {
+    let va = a[stratSortKey], vb = b[stratSortKey];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return stratSortAsc ? (va < vb ? -1 : va > vb ? 1 : 0)
+                        : (va > vb ? -1 : va < vb ? 1 : 0);
+  });
+
+  renderStratTable(filtered);
+}
+
+// ── Table render ──────────────────────────────────────────────────────────
+function renderStratTable(stocks) {
+  const tbody = document.getElementById('stratStockBody');
+
+  if (!stocks.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">
+      No stocks match this filter.
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = stocks.map(s => buildStratRow(s)).join('');
+
+  // Re-expand
+  stratExpandedRows.forEach(sym => {
+    const dr = document.getElementById(`strat-detail-${sym}`);
+    const mr = document.getElementById(`strat-row-${sym}`);
+    if (dr) dr.style.display = '';
+    if (mr) mr.classList.add('expanded');
+  });
+}
+
+function buildStratRow(s) {
+  const id    = s.symbol.replace(/[^a-zA-Z0-9]/g, '_');
+  const rowId = `strat-row-${id}`;
+  const detId = `strat-detail-${id}`;
+
+  // Change %
+  const chg = s.chg_pct;
+  const chgHtml = chg != null
+    ? `<span style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`
+    : '–';
+
+  // Trend badge
+  const trendColor = s.trend === 'STRONG_UP' ? 'var(--green)'
+                   : s.trend === 'UPTREND'    ? '#7cf'
+                   : 'var(--text-muted)';
+  const trendLabel = s.trend === 'STRONG_UP' ? '↑↑ Strong Up'
+                   : s.trend === 'UPTREND'    ? '↑ Uptrend'
+                   : '↓ Downtrend';
+
+  // EMA proximity
+  const ema21pct = s.ema21 ? ((s.cmp - s.ema21) / s.ema21 * 100).toFixed(1) : null;
+  const ema50pct = s.ema50 ? ((s.cmp - s.ema50) / s.ema50 * 100).toFixed(1) : null;
+  const emaHtml = `
+    <span style="color:${parseFloat(ema21pct) > 0 ? 'var(--green)' : 'var(--red)'}">21: ${ema21pct != null ? (ema21pct > 0 ? '+' : '') + ema21pct + '%' : '–'}</span>
+    <span style="color:var(--text-dim)"> / </span>
+    <span style="color:${parseFloat(ema50pct) > 0 ? 'var(--green)' : 'var(--red)'}">50: ${ema50pct != null ? (ema50pct > 0 ? '+' : '') + ema50pct + '%' : '–'}</span>
+  `;
+
+  // 52W distance
+  const d52 = s.dist_52wh;
+  const d52Color = d52 >= -5 ? 'var(--green)' : d52 >= -15 ? 'var(--yellow)' : 'var(--text-muted)';
+
+  // Pattern badges
+  const patHtml = !s.patterns || !s.patterns.length
+    ? '<span style="color:var(--text-dim)">–</span>'
+    : s.patterns.map(p =>
+        `<span class="strat-pat-badge strat-pat-${p.pattern}">${p.pattern_icon} ${p.pattern_label}</span>`
+      ).join(' ');
+
+  const expandIcon = stratExpandedRows.has(id) ? '▼' : '▶';
+
+  return `
+    <tr id="${rowId}" class="strat-stock-row ${s.has_setup ? 'strat-has-setup' : ''}"
+        onclick="toggleStratRow('${id}')">
+      <td class="strat-expand-btn">${expandIcon}</td>
+      <td><strong>${s.symbol}</strong><br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
+      <td style="color:var(--text-muted)">${s.sector}</td>
+      <td style="font-family:var(--mono)">₹${fmt(s.cmp)}</td>
+      <td>${chgHtml}</td>
+      <td style="color:${trendColor};font-size:11px">${trendLabel}</td>
+      <td style="font-size:11px;font-family:var(--mono)">${emaHtml}</td>
+      <td style="color:${d52Color};font-family:var(--mono)">${d52 != null ? d52 + '%' : '–'}</td>
+      <td style="font-family:var(--mono);color:var(--text-muted)">${s.avg_daily_val_cr ?? '–'} Cr</td>
+      <td class="strat-pat-cell">${patHtml}</td>
+    </tr>
+    <tr id="${detId}" class="strat-detail-row" style="display:none">
+      <td colspan="10" class="strat-detail-cell">
+        ${buildStratDetail(s)}
+      </td>
+    </tr>
+  `;
+}
+
+function buildStratDetail(s) {
+  if (!s.patterns || !s.patterns.length) {
+    return `<div class="strat-detail-wrap">
+      <div style="color:var(--text-dim);padding:12px">No active patterns. Stock passes quality gate (above 200 EMA, volume ok).</div>
+      <div class="strat-ema-ladder">
+        <div class="strat-ema-item"><span>10 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema10)}</span></div>
+        <div class="strat-ema-item"><span>21 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema21)}</span></div>
+        <div class="strat-ema-item"><span>50 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema50)}</span></div>
+        <div class="strat-ema-item"><span>200 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema200)}</span></div>
+      </div>
+    </div>`;
+  }
+
+  const patsHtml = s.patterns.map(p => {
+    const risk = p.entry && p.stop_loss ? (p.entry - p.stop_loss) : null;
+    const riskPct = risk && p.entry ? ((risk / p.entry) * 100).toFixed(1) : null;
+
+    // Phase 5: position size for 1L capital
+    const posSize1L = risk ? Math.floor(100000 * 0.015 / risk) : null;
+
+    return `
+      <div class="strat-pattern-card strat-pat-card-${p.pattern}">
+        <div class="strat-pattern-header">
+          <span class="strat-pattern-name">${p.pattern_icon} ${p.pattern_label}</span>
+          <span class="strat-pattern-note">${p.note || ''}</span>
+        </div>
+        <div class="strat-levels-grid">
+          <div class="strat-level-item strat-entry">
+            <span class="strat-level-label">Entry</span>
+            <span class="strat-level-val">₹${fmt(p.entry)}</span>
+          </div>
+          <div class="strat-level-item strat-stop">
+            <span class="strat-level-label">Stop Loss</span>
+            <span class="strat-level-val">₹${fmt(p.stop_loss)}</span>
+            ${riskPct ? `<span class="strat-level-sub">−${riskPct}%</span>` : ''}
+          </div>
+          <div class="strat-level-item strat-t1">
+            <span class="strat-level-label">Target 1 (1:2)</span>
+            <span class="strat-level-val">₹${fmt(p.target1)}</span>
+          </div>
+          <div class="strat-level-item strat-t2">
+            <span class="strat-level-label">Target 2 (1:3)</span>
+            <span class="strat-level-val">₹${fmt(p.target2)}</span>
+          </div>
+          <div class="strat-level-item strat-t3">
+            <span class="strat-level-label">Target 3 (1:4)</span>
+            <span class="strat-level-val">₹${fmt(p.target3)}</span>
+          </div>
+          <div class="strat-level-item strat-scale">
+            <span class="strat-level-label">Exit 50% at</span>
+            <span class="strat-level-val">₹${fmt(p.scale_out_50pct)}</span>
+            <span class="strat-level-sub">then trail 10 EMA</span>
+          </div>
+        </div>
+        <div class="strat-pattern-footer">
+          <span>Vol ratio: <strong>${p.vol_ratio != null ? p.vol_ratio + 'x' : '–'}</strong></span>
+          ${posSize1L ? `<span>Shares for ₹1L @ 1.5% risk: <strong>${posSize1L}</strong></span>` : ''}
+          ${p.trail_stop ? `<span>10 EMA trail: <strong>₹${fmt(p.trail_stop)}</strong></span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `<div class="strat-detail-wrap">
+    <div class="strat-ema-ladder">
+      <div class="strat-ema-item"><span>CMP</span><span style="font-family:var(--mono);color:var(--text)">₹${fmt(s.cmp)}</span></div>
+      <div class="strat-ema-item"><span>10 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema10)}</span></div>
+      <div class="strat-ema-item"><span>21 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema21)}</span></div>
+      <div class="strat-ema-item"><span>50 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema50)}</span></div>
+      <div class="strat-ema-item"><span>200 EMA</span><span style="font-family:var(--mono)">₹${fmt(s.ema200)}</span></div>
+      <div class="strat-ema-item"><span>52W High</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.w52_high)}</span></div>
+      <div class="strat-ema-item"><span>Avg Vol 20d</span><span style="font-family:var(--mono)">${s.avg_daily_val_cr ?? '–'} Cr/day</span></div>
+    </div>
+    <div class="strat-patterns-list">${patsHtml}</div>
+  </div>`;
+}
+
+function toggleStratRow(id) {
+  const detRow = document.getElementById(`strat-detail-${id}`);
+  const mainRow = document.getElementById(`strat-row-${id}`);
+  if (!detRow) return;
+
+  const isOpen = detRow.style.display !== 'none';
+  detRow.style.display = isOpen ? 'none' : '';
+  mainRow.classList.toggle('expanded', !isOpen);
+  if (isOpen) stratExpandedRows.delete(id);
+  else stratExpandedRows.add(id);
+
+  // Update expand icon
+  const btn = mainRow.querySelector('.strat-expand-btn');
+  if (btn) btn.textContent = isOpen ? '▶' : '▼';
+}
+
+// ── Phase 5 — Position size calculator ───────────────────────────────────
+function calcPosition() {
+  const capital  = parseFloat(document.getElementById('calcCapital').value)  || 0;
+  const entry    = parseFloat(document.getElementById('calcEntry').value)    || 0;
+  const stop     = parseFloat(document.getElementById('calcStop').value)     || 0;
+  const riskPct  = parseFloat(document.getElementById('calcRiskPct').value)  || 1.5;
+  const el       = document.getElementById('calcResults');
+
+  if (!entry || !stop || entry <= stop) {
+    el.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Enter valid Entry and Stop Loss (Entry must be above Stop).</p>';
+    return;
+  }
+
+  const riskPerTrade = capital * (riskPct / 100);
+  const riskPerShare = entry - stop;
+  const shares       = Math.floor(riskPerTrade / riskPerShare);
+  const posValue     = shares * entry;
+  const posValuePct  = (posValue / capital * 100).toFixed(1);
+  const t1           = entry + riskPerShare * 2;
+  const t2           = entry + riskPerShare * 3;
+  const t3           = entry + riskPerShare * 4;
+  const exit50pct    = t1;
+
+  el.innerHTML = `
+    <div class="calc-row">
+      <span>Capital at Risk</span>
+      <strong style="color:var(--red)">₹${riskPerTrade.toLocaleString('en-IN', {maximumFractionDigits: 0})}</strong>
+    </div>
+    <div class="calc-row">
+      <span>Risk Per Share</span>
+      <strong>₹${riskPerShare.toFixed(2)}</strong>
+    </div>
+    <div class="calc-row">
+      <span>Position Size</span>
+      <strong style="color:var(--blue)">${shares.toLocaleString('en-IN')} shares</strong>
+    </div>
+    <div class="calc-row">
+      <span>Position Value</span>
+      <strong>₹${posValue.toLocaleString('en-IN', {maximumFractionDigits: 0})} (${posValuePct}%)</strong>
+    </div>
+    <hr style="border-color:var(--border);margin:8px 0">
+    <div class="calc-row">
+      <span>Target 1 (1:2 R:R)</span>
+      <strong style="color:var(--green)">₹${t1.toFixed(2)}</strong>
+    </div>
+    <div class="calc-row">
+      <span>Target 2 (1:3 R:R)</span>
+      <strong style="color:var(--green)">₹${t2.toFixed(2)}</strong>
+    </div>
+    <div class="calc-row">
+      <span>Target 3 (1:4 R:R)</span>
+      <strong style="color:var(--green)">₹${t3.toFixed(2)}</strong>
+    </div>
+    <hr style="border-color:var(--border);margin:8px 0">
+    <div class="calc-row">
+      <span>Exit 50% at T1</span>
+      <strong>₹${exit50pct.toFixed(2)} → move stop to ₹${entry.toFixed(2)}</strong>
+    </div>
+    <div class="calc-row" style="margin-top:6px;font-size:10px;color:var(--text-dim)">
+      <span>Max portfolio heat (6 positions)</span>
+      <strong>${(riskPct * 6).toFixed(1)}%</strong>
+    </div>
+  `;
 }
