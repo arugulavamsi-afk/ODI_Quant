@@ -316,7 +316,8 @@
       <div class="strat-section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <span><span class="strat-phase-badge">Phase 3+4</span> Quality Gate &amp; Pattern Arsenal</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap" id="stratPatternTabs">
-          <button class="strat-tab active" data-pf="ALL"           onclick="setStratFilter(this,'ALL')">All Stocks</button>
+          <button class="strat-tab active" data-pf="ALL"           onclick="setStratFilter(this,'ALL')">All NIFTY 100</button>
+          <button class="strat-tab" data-pf="TOP_SECTOR"          onclick="setStratFilter(this,'TOP_SECTOR')">🔥 Top Sectors</button>
           <button class="strat-tab" data-pf="WITH_PATTERN"        onclick="setStratFilter(this,'WITH_PATTERN')">🎯 Has Setup</button>
           <button class="strat-tab" data-pf="EMA_PULLBACK"        onclick="setStratFilter(this,'EMA_PULLBACK')">📉 EMA Pullback</button>
           <button class="strat-tab" data-pf="BASE_BREAKOUT"       onclick="setStratFilter(this,'BASE_BREAKOUT')">🚀 Base Breakout</button>
@@ -334,7 +335,7 @@
             <tr>
               <th></th>
               <th onclick="sortStrat('symbol')">Symbol ↕</th>
-              <th>Sector</th>
+              <th onclick="sortStrat('sector_rank')">Sector ↕</th>
               <th onclick="sortStrat('cmp')">CMP ↕</th>
               <th onclick="sortStrat('chg_pct')">Chg% ↕</th>
               <th>Trend</th>

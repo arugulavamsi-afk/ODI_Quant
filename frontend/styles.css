@@ -1317,12 +1317,25 @@ body {
   margin-top: 3px;
   text-align: center;
 }
-.strat-chip-blue  { border-left: 3px solid var(--blue);  }
-.strat-chip-blue  .strat-chip-num { color: var(--blue);  }
-.strat-chip-green { border-left: 3px solid var(--green); }
-.strat-chip-green .strat-chip-num { color: var(--green); }
-.strat-chip-yellow{ border-left: 3px solid var(--yellow);}
-.strat-chip-yellow .strat-chip-num{ color: var(--yellow);}
+.strat-chip-blue   { border-left: 3px solid var(--blue);   }
+.strat-chip-blue   .strat-chip-num { color: var(--blue);   }
+.strat-chip-green  { border-left: 3px solid var(--green);  }
+.strat-chip-green  .strat-chip-num { color: var(--green);  }
+.strat-chip-yellow { border-left: 3px solid var(--yellow); }
+.strat-chip-yellow .strat-chip-num { color: var(--yellow); }
+.strat-chip-purple { border-left: 3px solid #a855f7; }
+.strat-chip-purple .strat-chip-num { color: #a855f7; }
+
+/* Sector rank pill inside stock table */
+.strat-sector-rank {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.strat-sector-rank.top {
+  color: #a855f7;
+  font-weight: 600;
+}
 
 /* Filter tabs */
 .strat-tab {

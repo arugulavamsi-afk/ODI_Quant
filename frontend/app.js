@@ -1017,10 +1017,15 @@ function renderStratSectors(sr) {
 
 // ── Phase 3+4 — Summary chips ─────────────────────────────────────────────
 function renderStratSummaryChips(summary) {
+  const topSectorStocks = stratStocks.filter(s => s.top_sector).length;
   document.getElementById('stratSummaryChips').innerHTML = `
     <div class="strat-chip strat-chip-blue">
       <span class="strat-chip-num">${summary.total_qualified ?? 0}</span>
-      <span class="strat-chip-lbl">Qualified (200 EMA + Volume)</span>
+      <span class="strat-chip-lbl">NIFTY 100 Qualified</span>
+    </div>
+    <div class="strat-chip strat-chip-purple">
+      <span class="strat-chip-num">${topSectorStocks}</span>
+      <span class="strat-chip-lbl">🔥 Top-Sector Stocks</span>
     </div>
     <div class="strat-chip strat-chip-green">
       <span class="strat-chip-num">${summary.with_patterns ?? 0}</span>
@@ -1058,7 +1063,9 @@ function sortStrat(key) {
 function applyStratFilters() {
   let filtered = [...stratStocks];
 
-  if (stratFilter === 'WITH_PATTERN') {
+  if (stratFilter === 'TOP_SECTOR') {
+    filtered = filtered.filter(s => s.top_sector);
+  } else if (stratFilter === 'WITH_PATTERN') {
     filtered = filtered.filter(s => s.has_setup);
   } else if (['EMA_PULLBACK', 'BASE_BREAKOUT', 'GAP_REVERSAL'].includes(stratFilter)) {
     filtered = filtered.filter(s =>
@@ -1147,7 +1154,13 @@ function buildStratRow(s) {
         onclick="toggleStratRow('${id}')">
       <td class="strat-expand-btn">${expandIcon}</td>
       <td><strong>${s.symbol}</strong><br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
-      <td style="color:var(--text-muted)">${s.sector}</td>
+      <td>
+        <span style="color:var(--text-muted)">${s.sector}</span>
+        ${s.top_sector
+          ? `<br><span class="strat-sector-rank top">🔥 #${s.sector_rank}</span>`
+          : `<br><span class="strat-sector-rank">#${s.sector_rank ?? '–'} ${s.sector_rs != null ? (s.sector_rs > 0 ? '+' : '') + s.sector_rs + '%' : ''}</span>`
+        }
+      </td>
       <td style="font-family:var(--mono)">₹${fmt(s.cmp)}</td>
       <td>${chgHtml}</td>
       <td style="color:${trendColor};font-size:11px">${trendLabel}</td>

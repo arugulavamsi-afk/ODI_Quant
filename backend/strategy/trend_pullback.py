@@ -478,34 +478,46 @@ def _process_stock(sym: str, info: dict) -> dict | None:
         return None
 
 
-def phase3_4_stock_screen(top_sectors: list, universe: dict) -> list:
+def phase3_4_stock_screen(sector_data: dict, universe: dict) -> list:
     """
-    Returns quality-gate stocks (above 200 EMA, sufficient volume)
-    from the top-ranked sectors, with pattern matches attached.
+    Scans the full NIFTY 100 universe (quality gate: above 200 EMA + volume).
+    Every result is enriched with its sector's RS rank so the frontend can
+    highlight top-sector stocks without restricting the scan.
     """
-    # Resolve which universe sector names map to top idx sector names
-    target_idx_sectors = set(top_sectors)
-    candidate_stocks = {}
-    for sym, info in universe.items():
-        u_sector = info.get("sector", "")
-        mapped   = UNIVERSE_TO_IDX_SECTOR.get(u_sector, u_sector)
-        if not top_sectors or mapped in target_idx_sectors or u_sector in target_idx_sectors:
-            candidate_stocks[sym] = info
+    # Build sector-rank lookup: universe sector name → RS rank (1 = best)
+    sector_rank_map: dict[str, int]   = {}
+    sector_rs_map:   dict[str, float] = {}
+    for s in sector_data.get("sectors", []):
+        idx_name = s["sector"]   # e.g. "Banking"
+        rank     = s.get("rank", 99)
+        rs       = s.get("rs_score", 0.0)
+        # Map both the index name and all universe aliases that point to it
+        sector_rank_map[idx_name] = rank
+        sector_rs_map[idx_name]   = rs
+        for uni_name, mapped in UNIVERSE_TO_IDX_SECTOR.items():
+            if mapped == idx_name:
+                sector_rank_map[uni_name] = rank
+                sector_rs_map[uni_name]   = rs
 
-    if not candidate_stocks:
-        candidate_stocks = universe   # fallback: scan all
+    top_sectors_set = set(sector_data.get("top_sectors", []))
 
     results = []
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(_process_stock, sym, info): sym
-                for sym, info in candidate_stocks.items()}
+                for sym, info in universe.items()}
         for fut in as_completed(futs):
             r = fut.result()
             if r is not None:
+                # Attach sector context
+                u_sector = r["sector"]
+                mapped   = UNIVERSE_TO_IDX_SECTOR.get(u_sector, u_sector)
+                r["sector_rank"]     = sector_rank_map.get(u_sector) or sector_rank_map.get(mapped, 99)
+                r["sector_rs"]       = sector_rs_map.get(u_sector)   or sector_rs_map.get(mapped, 0.0)
+                r["top_sector"]      = (mapped in top_sectors_set or u_sector in top_sectors_set)
                 results.append(r)
 
-    # Priority: stocks with patterns first, then closest to 52w high
-    results.sort(key=lambda x: (-x["pattern_count"], x["dist_52wh"]))
+    # Sort: patterns first → top-sector first → closest to 52w high
+    results.sort(key=lambda x: (-x["pattern_count"], x["sector_rank"], x["dist_52wh"]))
     return results
 
 
@@ -523,8 +535,8 @@ def run_trend_pullback_strategy(universe: dict) -> dict:
         top_sectors = sector_data.get("top_sectors", [])
         logger.info(f"[TrendPullback] Top sectors: {top_sectors}")
 
-        logger.info("[TrendPullback] Phase 3+4: Stock Screen + Patterns…")
-        stocks = phase3_4_stock_screen(top_sectors, universe)
+        logger.info("[TrendPullback] Phase 3+4: Stock Screen + Patterns (full NIFTY 100)…")
+        stocks = phase3_4_stock_screen(sector_data, universe)
 
         # Summary
         total      = len(stocks)
