@@ -141,6 +141,62 @@ def fetch_global_data() -> dict:
     return global_data
 
 
+def fetch_sector_etf_spikes(sectors: set, lookback: int = 20) -> dict:
+    """
+    Fetch today's volume spike ratio for each unique sector ETF.
+
+    Returns dict: {sector_name: spike_ratio}
+    spike_ratio = today_volume / 20d_avg_volume for the sector ETF.
+
+    Called once per pipeline run with the set of unique sectors being analysed.
+    Only fetches each distinct ETF symbol once even if multiple sectors map to it.
+
+    On failure (ETF delisted, yfinance error, thin volume) the sector is omitted
+    from the result — callers treat a missing key as "no ETF data, skip filter".
+    """
+    from data.universe import SECTOR_ETFS, SECTOR_ETF_DEFAULT
+
+    # Build a deduplicated map: etf_symbol → [sector, ...]
+    etf_to_sectors: dict[str, list[str]] = {}
+    for sector in sectors:
+        etf = SECTOR_ETFS.get(sector, SECTOR_ETF_DEFAULT)
+        etf_to_sectors.setdefault(etf, []).append(sector)
+
+    result: dict[str, float] = {}
+    needed_days = lookback + 5  # small buffer for holidays
+
+    for etf_symbol, mapped_sectors in etf_to_sectors.items():
+        try:
+            ticker = yf.Ticker(etf_symbol)
+            df = ticker.history(period=f"{needed_days}d", auto_adjust=True)
+
+            if df is None or df.empty or "Volume" not in df.columns:
+                logger.warning(f"Sector ETF {etf_symbol}: no volume data — skipping filter for {mapped_sectors}")
+                continue
+
+            df = df.dropna(subset=["Volume"]).sort_index()
+            if len(df) < lookback + 1:
+                logger.warning(f"Sector ETF {etf_symbol}: only {len(df)} rows — skipping filter")
+                continue
+
+            today_vol = float(df["Volume"].iloc[-1])
+            avg_vol   = float(df["Volume"].iloc[-(lookback + 1):-1].mean())
+
+            if avg_vol == 0 or pd.isna(avg_vol):
+                continue
+
+            spike = round(today_vol / avg_vol, 3)
+            logger.debug(f"Sector ETF {etf_symbol}: spike={spike:.2f}x  ({', '.join(mapped_sectors)})")
+
+            for sector in mapped_sectors:
+                result[sector] = spike
+
+        except Exception as e:
+            logger.warning(f"Sector ETF {etf_symbol}: fetch failed ({e}) — skipping filter for {mapped_sectors}")
+
+    return result
+
+
 def fetch_nifty_data(period: str = "1y") -> pd.DataFrame | None:
     """
     Fetch NIFTY 50 (^NSEI) OHLCV data.

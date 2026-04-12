@@ -6,14 +6,44 @@ Strategy:
   LONG  — Enter on break above PDH. SL is always the true PDL-based level.
   SHORT — Enter on break below PDL. SL is always the true PDH-based level.
 
+── Structural limitation: EOD signal + next-day entry ───────────────────────
+All signals are generated from yesterday's EOD data. By the time you can act,
+the strong close that triggered the signal is 24 hours old. The entry trigger
+(PDH + 0.1%) is the next session's confirmation that yesterday's strength is
+continuing — but the next session can behave in two ways that both hurt:
+
+  Gap up  — stock opens above the gap_invalidation_level (PDH × 1.01) before
+            the trigger even fires. You are forced to either chase at a higher
+            price or skip. A 1.5% ATR stock breaches a 1% gap-invalidation
+            level roughly half the time on signal days (by definition, signal
+            days have high ATR and volume). The gap_risk flag in signal_engine
+            caps these at MODERATE, but MODERATE setups still reach the scanner.
+
+  Flat/down open — trigger never fires. The whole setup produces no trade.
+            The strong EOD close is simply not followed through. No capital is
+            lost, but the opportunity cost is real when the stock then moves.
+
+This is not fixable without switching to intraday signal generation.
+The mitigation is to raise the bar for what reaches the entry stage:
+  • BREAKOUT_PERIOD = 252 — only genuine 52-week breakouts, not 20-day recoveries
+  • RSI gate (< 70 long, > 30 short) — no entries into exhausted moves
+  • Volume threshold ≥ 1.5× — no low-conviction signals
+These filters reduce the signal count but improve the percentage that actually
+follow through on the next open, which is the only thing that matters here.
+─────────────────────────────────────────────────────────────────────────────
+
 SL is NEVER artificially tightened. Setups where the natural SL is too wide
 (> _SL_FILTER_PCT) are flagged via `sl_too_wide=True` so the scanner can
 skip them rather than fake a tighter stop and mis-size the position.
 
-Targets are intraday-realistic (stocks typically move ~half their daily ATR in one direction):
-  T1 = 0.5× ATR  → book 40%, move SL to breakeven  (~0.5–1% move)
-  T2 = 1.0× ATR  → book 40%                         (~1–2% move)
-  T3 = 1.5× ATR  → trail remainder, capped at 2.5%  (stretch target)
+Targets are swing-trade sized (signals come from daily OHLCV with MA20/50/200):
+  T1 = 2× ATR  → book 40%, move SL to breakeven  (~2–4% move, 1–3 day hold)
+  T2 = 4× ATR  → book 40%                         (~4–8% move, 1–2 week hold)
+  T3 = 6× ATR  → trail remainder, NO cap           (~6–12% move, 2–4 week hold)
+
+The previous 0.5×/1×/1.5× targets were day-trade sized and capped at 2.5%, causing
+100% of position to exit within noise range of entry on genuine multi-week swing moves.
+No percentage cap on T3 — for a daily signal, the trend is the edge; let it run.
 
 SL bounds:
   Min SL  = 0.3% of entry  — floor so SL isn't trivially tight (noise protection)
@@ -48,7 +78,9 @@ except ImportError:
 
 _SL_MIN_PCT         = 0.003   # 0.3%  — floor so SL isn't inside tick noise
 _SL_FILTER_PCT      = 0.02    # 2.0%  — flag (not cap) for setups with wide natural SL
-_T3_MAX_PCT         = 0.025   # 2.5%  — hard cap on T3 (rarely exceeded intraday)
+_T1_ATR_MULT        = 2.0     # T1 = 2× ATR — early partial, confirms move is working
+_T2_ATR_MULT        = 4.0     # T2 = 4× ATR — primary swing target (~1–2 week hold)
+_T3_ATR_MULT        = 6.0     # T3 = 6× ATR — let winner run, NO percentage cap
 _ENTRY_SLIPPAGE_PCT = 0.002   # 0.2%  — market order through a momentum breakout
 _EXIT_SLIPPAGE_PCT  = 0.001   # 0.1%  — limit order per target (partial-fill risk)
 _MIN_T1_NET_PCT     = 0.005   # 0.5%  — minimum net gain at T1 to be worth booking
@@ -76,7 +108,11 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
         direction = direction.upper()
 
         if direction == "LONG":
-            # Entry trigger: just above PDH (0.1% buffer to avoid false break)
+            # Entry trigger: just above PDH (0.1% buffer to avoid false break).
+            # NOTE — structural lag: PDH is yesterday's high. This trigger fires the
+            # day after the signal, so you are always one session behind. Gap-up opens
+            # blow through this level before the market opens (see gap_invalidation_level
+            # below); flat/down opens mean the trigger never fires. See module docstring.
             entry_trigger = round(pdh * 1.001, 2)
 
             # SL: always the true PDL-based level — never artificially tightened.
@@ -108,14 +144,15 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
             # must use this number or the trade is over-sized.
             actual_risk = round(entry_fill - stop_loss, 2)
 
-            # Intraday targets: absolute market price levels (0.5×/1×/1.5× ATR from trigger).
+            # Swing-trade targets: absolute market price levels (2×/4×/6× ATR from trigger).
+            # Signals come from daily OHLCV — these are multi-day holds, not intraday.
+            # No percentage cap on T3: daily ATR-based targets are already realistic;
+            # a cap causes 100% exit within entry noise on genuine multi-week moves.
             # Targets are chart levels — they don't move based on your fill.
-            # But net P&L at each target depends on fill price + exit slippage.
-            t3_atr  = entry_trigger + 1.5 * atr
-            t3_cap  = entry_trigger * (1 + _T3_MAX_PCT)
-            target1 = round(entry_trigger + 0.5 * atr, 2)
-            target2 = round(entry_trigger + 1.0 * atr, 2)
-            target3 = round(min(t3_atr, t3_cap), 2)
+            # Net P&L at each target depends on fill price + exit slippage.
+            target1 = round(entry_trigger + _T1_ATR_MULT * atr, 2)
+            target2 = round(entry_trigger + _T2_ATR_MULT * atr, 2)
+            target3 = round(entry_trigger + _T3_ATR_MULT * atr, 2)
 
             # Net gain at each target after exit slippage (limit order gives back 0.1%)
             t1_net_gain = round((target1 * (1 - _EXIT_SLIPPAGE_PCT)) - entry_fill, 2)
@@ -123,7 +160,7 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
             t3_net_gain = round((target3 * (1 - _EXIT_SLIPPAGE_PCT)) - entry_fill, 2)
 
             # T1 viability: if net gain after both slippages is < 0.5% of fill,
-            # booking T1 barely covers commissions and is not worth the order.
+            # T1 barely covers commissions and is not worth booking separately.
             t1_net_pct  = t1_net_gain / entry_fill if entry_fill > 0 else 0
             t1_too_close = t1_net_pct < _MIN_T1_NET_PCT
 
@@ -133,7 +170,8 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
                 f"SKIP if next open > ₹{gap_invalidation_level:.2f} (gap-up invalidates PDH trigger). "
                 f"SL at {sl_basis} (risk {round(sl_pct*100,2)}% from trigger, "
                 f"{round(actual_risk/entry_fill*100,2)}% from fill). "
-                f"Book 40% at T1, move SL to breakeven. Book 40% at T2. Trail rest to T3."
+                f"Swing hold: Book 40% at T1 ({_T1_ATR_MULT:.0f}×ATR), move SL to breakeven. "
+                f"Book 40% at T2 ({_T2_ATR_MULT:.0f}×ATR). Trail rest to T3 ({_T3_ATR_MULT:.0f}×ATR)."
             )
             if t1_too_close:
                 setup_note += (
@@ -171,12 +209,10 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
             # Actual risk from fill to SL — always larger than trigger-to-SL.
             actual_risk = round(stop_loss - entry_fill, 2)
 
-            # Targets are absolute chart levels; net P&L depends on fill + exit slippage.
-            t3_atr  = entry_trigger - 1.5 * atr
-            t3_cap  = entry_trigger * (1 - _T3_MAX_PCT)
-            target1 = round(entry_trigger - 0.5 * atr, 2)
-            target2 = round(entry_trigger - 1.0 * atr, 2)
-            target3 = round(max(t3_atr, t3_cap), 2)
+            # Swing-trade targets — mirror of LONG, no percentage cap.
+            target1 = round(entry_trigger - _T1_ATR_MULT * atr, 2)
+            target2 = round(entry_trigger - _T2_ATR_MULT * atr, 2)
+            target3 = round(entry_trigger - _T3_ATR_MULT * atr, 2)
 
             # Net gain at each target after exit slippage (buy-to-cover limit, 0.1%)
             t1_net_gain = round(entry_fill - (target1 * (1 + _EXIT_SLIPPAGE_PCT)), 2)
@@ -192,7 +228,8 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
                 f"SKIP if next open < ₹{gap_invalidation_level:.2f} (gap-down invalidates PDL trigger). "
                 f"SL at {sl_basis} (risk {round(sl_pct*100,2)}% from trigger, "
                 f"{round(actual_risk/entry_fill*100,2)}% from fill). "
-                f"Book 40% at T1, move SL to breakeven. Book 40% at T2. Trail rest to T3."
+                f"Swing hold: Book 40% at T1 ({_T1_ATR_MULT:.0f}×ATR), move SL to breakeven. "
+                f"Book 40% at T2 ({_T2_ATR_MULT:.0f}×ATR). Trail rest to T3 ({_T3_ATR_MULT:.0f}×ATR)."
             )
             if t1_too_close:
                 setup_note += (

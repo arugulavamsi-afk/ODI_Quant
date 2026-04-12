@@ -10,48 +10,76 @@ from config import HIGH_PROB_THRESHOLD, WATCHLIST_THRESHOLD, RISK_WARNING_PCT
 # Alias used in explanation strings so the displayed threshold matches config.
 RISK_WARNING_PCT_DISPLAY = RISK_WARNING_PCT
 
+# Asymmetric HIGH_PROB threshold based on global sentiment.
+# Contrarian logic: euphoric sentiment = move is already extended, raise the bar.
+# Fear-driven sentiment = setups are higher quality (genuine dips), lower the bar.
+# STRONG_BULLISH → 75: hardest entry — institutions distributing into retail euphoria
+# MILD_BULLISH   → 72: slightly elevated bar
+# NEUTRAL        → 70: default (HIGH_PROB_THRESHOLD from config)
+# MILD_BEARISH   → 65: setups more likely to be genuine fear-driven dips
+# STRONG_BEARISH → 62: maximum contrarian discount — market overreaction likely
+_SENTIMENT_THRESHOLD = {
+    "STRONG_BULLISH": 75,
+    "MILD_BULLISH":   72,
+    "NEUTRAL":        HIGH_PROB_THRESHOLD,  # 70
+    "MILD_BEARISH":   65,
+    "STRONG_BEARISH": 62,
+}
 
-def classify_stock(long_score: int, short_score: int, sl_too_wide: bool = False) -> dict:
+
+def classify_stock(long_score: int, short_score: int, sl_too_wide: bool = False,
+                   sentiment_class: str = "NEUTRAL") -> dict:
     """
     Returns category and direction:
-    - long_score >= 70:  'HIGH_PROB_LONG'
-    - short_score >= 70: 'HIGH_PROB_SHORT'
+    - long_score >= threshold:  'HIGH_PROB_LONG'
+    - short_score >= threshold: 'HIGH_PROB_SHORT'
     - long_score >= 50 or short_score >= 50: 'WATCHLIST'
     - else: 'NO_TRADE'
 
-    If both long and short >= 70, pick the higher one.
+    The HIGH_PROB threshold is sentiment-adjusted (see _SENTIMENT_THRESHOLD):
+    STRONG_BULLISH=75, MILD_BULLISH=72, NEUTRAL=70, MILD_BEARISH=65, STRONG_BEARISH=62.
+    This is the inverse of naively boosting scores on good-sentiment days, which
+    generated more signals precisely when risk/reward was worst.
+
+    If both long and short >= threshold, pick the higher one.
 
     sl_too_wide=True: natural PDL/PDH stop exceeds 2% of entry.
-    These setups are demoted one tier — a HIGH_PROB becomes WATCHLIST
-    and a WATCHLIST becomes NO_TRADE — because the real risk is too large
-    to size correctly at ₹1L capital risk per trade.
+    These setups are demoted one tier — HIGH_PROB becomes WATCHLIST and
+    WATCHLIST becomes NO_TRADE.
     """
-    if long_score >= HIGH_PROB_THRESHOLD and short_score >= HIGH_PROB_THRESHOLD:
+    threshold = _SENTIMENT_THRESHOLD.get(sentiment_class, HIGH_PROB_THRESHOLD)
+
+    # Attach threshold to every result so the UI can display "needed X, got Y"
+    def _r(d: dict) -> dict:
+        d["high_prob_threshold"] = threshold
+        return d
+
+    if long_score >= threshold and short_score >= threshold:
         direction = "LONG" if long_score >= short_score else "SHORT"
         cat = f"HIGH_PROB_{direction}"
         if sl_too_wide:
-            return {"category": "WATCHLIST", "label": f"WATCHLIST (SL>2%)", "direction": direction, "priority": 2}
-        return {"category": cat, "label": cat, "direction": direction, "priority": 1}
+            return _r({"category": "WATCHLIST", "label": f"WATCHLIST (SL>2%)", "direction": direction, "priority": 2})
+        return _r({"category": cat, "label": cat, "direction": direction, "priority": 1})
 
-    elif long_score >= HIGH_PROB_THRESHOLD:
+    elif long_score >= threshold:
         if sl_too_wide:
-            return {"category": "WATCHLIST", "label": "WATCHLIST (SL>2%)", "direction": "LONG", "priority": 2}
-        return {"category": "HIGH_PROB_LONG", "label": "HIGH_PROB_LONG", "direction": "LONG", "priority": 1}
+            return _r({"category": "WATCHLIST", "label": "WATCHLIST (SL>2%)", "direction": "LONG", "priority": 2})
+        return _r({"category": "HIGH_PROB_LONG", "label": "HIGH_PROB_LONG", "direction": "LONG", "priority": 1})
 
-    elif short_score >= HIGH_PROB_THRESHOLD:
+    elif short_score >= threshold:
         if sl_too_wide:
-            return {"category": "WATCHLIST", "label": "WATCHLIST (SL>2%)", "direction": "SHORT", "priority": 2}
-        return {"category": "HIGH_PROB_SHORT", "label": "HIGH_PROB_SHORT", "direction": "SHORT", "priority": 1}
+            return _r({"category": "WATCHLIST", "label": "WATCHLIST (SL>2%)", "direction": "SHORT", "priority": 2})
+        return _r({"category": "HIGH_PROB_SHORT", "label": "HIGH_PROB_SHORT", "direction": "SHORT", "priority": 1})
 
     elif long_score >= WATCHLIST_THRESHOLD or short_score >= WATCHLIST_THRESHOLD:
         direction = "LONG" if long_score >= short_score else "SHORT"
         if sl_too_wide:
-            return {"category": "NO_TRADE", "label": "NO_TRADE (SL>2%)", "direction": direction, "priority": 3}
-        return {"category": "WATCHLIST", "label": "WATCHLIST", "direction": direction, "priority": 2}
+            return _r({"category": "NO_TRADE", "label": "NO_TRADE (SL>2%)", "direction": direction, "priority": 3})
+        return _r({"category": "WATCHLIST", "label": "WATCHLIST", "direction": direction, "priority": 2})
 
     else:
         direction = "LONG" if long_score >= short_score else "SHORT"
-        return {"category": "NO_TRADE", "label": "NO_TRADE", "direction": direction, "priority": 3}
+        return _r({"category": "NO_TRADE", "label": "NO_TRADE", "direction": direction, "priority": 3})
 
 
 def rank_stocks(results_list: list) -> list:
@@ -225,7 +253,7 @@ def generate_explanation(
         gap_risk              = indicators.get("gap_risk", "LOW")
 
         lines.append("")
-        lines.append(f"Day Trade Setup ({direction}):")
+        lines.append(f"Swing Trade Setup ({direction}):")
         if capital_risk_high:
             lines.append(f"  ⚠ CAPITAL RISK HIGH: This trade risks {capital_risk_pct:.2f}% of ₹{configured_capital:,.0f} "
                          f"(configured in config.py). Exceeds {RISK_WARNING_PCT_DISPLAY}% threshold. Reduce size or skip.")
@@ -249,9 +277,9 @@ def generate_explanation(
         if gap_invalid:
             lines.append(f"  Gap Invalidation: ₹{gap_invalid:.2f}  ← skip if open breaches this")
         lines.append(f"  Stop Loss:        ₹{sl:.2f}  ({actual_risk_pct:.2f}% from fill  |  {risk_pct:.2f}% from trigger)")
-        lines.append(f"  Target 1 (0.5×ATR): ₹{t1:.2f}  [{rr_t1:.2f}:1 RR after slip]  net ₹{t1_net_gain:.2f} — Book 40%, move SL→BE")
-        lines.append(f"  Target 2 (1.0×ATR): ₹{t2:.2f}  [{rr_t2:.2f}:1 RR after slip]  net ₹{t2_net_gain:.2f} — Book 40%")
-        lines.append(f"  Target 3 (1.5×ATR): ₹{t3:.2f}  [{rr_t3:.2f}:1 RR after slip]  — Trail remaining 20%")
+        lines.append(f"  Target 1 (2×ATR):   ₹{t1:.2f}  [{rr_t1:.2f}:1 RR after slip]  net ₹{t1_net_gain:.2f} — Book 40%, move SL→BE")
+        lines.append(f"  Target 2 (4×ATR):   ₹{t2:.2f}  [{rr_t2:.2f}:1 RR after slip]  net ₹{t2_net_gain:.2f} — Book 40%")
+        lines.append(f"  Target 3 (6×ATR):   ₹{t3:.2f}  [{rr_t3:.2f}:1 RR after slip]  — Trail remaining 20%")
         lines.append(f"  Position Sizing   (capital: ₹{configured_capital:,.0f} — set ACCOUNT_CAPITAL in config.py):")
         lines.append(f"    Conservative 0.5%: {pos_size_half} shares  risking ₹{round(actual_risk_per_share * pos_size_half, 0):.0f}")
         lines.append(f"    Standard     1.0%: {pos_size} shares  risking ₹{capital_risk_amt:,.0f}  ({capital_risk_pct:.2f}% of capital)")

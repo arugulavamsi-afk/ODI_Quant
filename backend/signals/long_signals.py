@@ -1,6 +1,9 @@
 """
 Long signal generation rules
 """
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from indicators.volume import is_genuine_volume_spike
 
 
 def check_long_rules(indicators: dict) -> dict:
@@ -28,11 +31,27 @@ def check_long_rules(indicators: dict) -> dict:
         triggered.append("BREAKOUT")
         rule_details.append(f"Price {breakout_status} above {indicators.get('breakout_period', 20)}-day high")
 
-    # Rule 3: Volume spike
-    volume_spike = indicators.get("volume_spike", 0)
-    if volume_spike >= 1.5:
+    # Rule 3: Volume spike — must be stock-specific, not sector/market noise.
+    # F&O expiry, index rebalancing, and post-holiday sessions lift sector volume
+    # uniformly; a stock whose spike merely tracks the sector ETF spike is not
+    # showing institutional accumulation.
+    volume_spike     = indicators.get("volume_spike", 0)
+    sector_etf_spike = indicators.get("sector_etf_spike")
+    if volume_spike >= 1.5 and is_genuine_volume_spike(volume_spike, sector_etf_spike):
         triggered.append("VOLUME_SPIKE")
-        rule_details.append(f"Volume spike {volume_spike:.1f}x above 20-day average")
+        if sector_etf_spike and sector_etf_spike >= 1.3:
+            rule_details.append(
+                f"Volume spike {volume_spike:.1f}x (sector ETF {sector_etf_spike:.1f}x) "
+                f"— stock-specific accumulation confirmed"
+            )
+        else:
+            rule_details.append(f"Volume spike {volume_spike:.1f}x above 20-day average")
+    elif volume_spike >= 1.5 and sector_etf_spike and sector_etf_spike >= 1.3:
+        # Spike exists but is not stock-specific — log why it was filtered
+        rule_details.append(
+            f"[VOL FILTERED] Volume {volume_spike:.1f}x but sector ETF also {sector_etf_spike:.1f}x "
+            f"— F&O expiry / rebalancing noise, not accumulation"
+        )
 
     # Rule 4: Closing strength
     closing_strength = indicators.get("closing_strength", 50)

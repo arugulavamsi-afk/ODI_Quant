@@ -8,6 +8,55 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import MA_SHORT, MA_MEDIUM, MA_LONG
 
+RSI_PERIOD = 14
+RSI_OVERBOUGHT = 70   # LONG gate: RSI must be below this
+RSI_OVERSOLD   = 30   # SHORT gate: RSI must be above this
+RSI_HEALTHY_HI = 65   # Upper bound of the healthy momentum zone (longs)
+RSI_HEALTHY_LO = 40   # Lower bound
+
+
+def calculate_rsi(df: pd.DataFrame, period: int = RSI_PERIOD) -> pd.DataFrame:
+    """Add RSI column to df using Wilder's EMA smoothing (same formula as intra_contra)."""
+    df = df.copy()
+    delta = df["Close"].diff()
+    gain  = delta.clip(lower=0)
+    loss  = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    df["RSI"] = 100 - 100 / (1 + rs)
+    return df
+
+
+def get_rsi_score(df: pd.DataFrame) -> int:
+    """
+    Returns 0-10 RSI momentum score — rewards healthy momentum, penalises extremes.
+
+    This measures something the four component scores do NOT already capture:
+    whether the move has room left to run.
+
+    Scoring:
+      RSI 40-65  → +10  (rising from mid-range — early-stage momentum, room to run)
+      RSI 65-70  → +5   (extended but not yet overbought)
+      RSI 30-40  → +3   (recovering from oversold — possible longs, lower conviction)
+      RSI ≥ 70   → 0    (overbought — gate will suppress signal anyway)
+      RSI ≤ 30   → 0    (oversold — gate will suppress short signal anyway)
+      No RSI     → 0
+    """
+    if df is None or "RSI" not in df.columns:
+        return 0
+    rsi_raw = df["RSI"].iloc[-1]
+    if pd.isna(rsi_raw):
+        return 0
+    rsi = float(rsi_raw)
+    if RSI_HEALTHY_LO <= rsi <= RSI_HEALTHY_HI:
+        return 10
+    elif RSI_HEALTHY_HI < rsi < RSI_OVERBOUGHT:
+        return 5
+    elif RSI_OVERSOLD < rsi < RSI_HEALTHY_LO:
+        return 3
+    return 0  # overbought (≥70) or oversold (≤30)
+
 
 def calculate_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
     """Add MA20, MA50, MA200 columns to df"""
@@ -144,6 +193,6 @@ def get_trend_score(df: pd.DataFrame) -> int:
     elif structure == "LH_LL":
         score += 10  # Good for short
     elif structure == "MIXED":
-        score += 3
+        score += 0  # No identifiable swing structure = no contribution
 
     return min(score, 25)

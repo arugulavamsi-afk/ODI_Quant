@@ -7,7 +7,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from indicators.trend import calculate_moving_averages, get_trend_bias, get_market_structure, get_trend_score
+from indicators.trend import (calculate_moving_averages, calculate_rsi,
+                              get_trend_bias, get_market_structure, get_trend_score,
+                              get_rsi_score, RSI_OVERBOUGHT, RSI_OVERSOLD)
 from indicators.volatility import calculate_atr, get_atr_expansion, get_range_vs_historical, get_volatility_score
 from indicators.volume import get_volume_spike, get_price_volume_alignment, get_volume_score
 from indicators.breakout import get_breakout_status, get_closing_strength, get_breakout_score, get_consolidation_breakout
@@ -84,7 +86,7 @@ def generate_short_signal(df: pd.DataFrame, indicators: dict) -> dict:
     }
 
 
-def generate_signals(df: pd.DataFrame) -> dict:
+def generate_signals(df: pd.DataFrame, sector_etf_spike: float = None) -> dict:
     """
     Master function - computes all indicators and returns both long and short signals.
     Returns comprehensive dict with all indicator values and signals.
@@ -96,6 +98,7 @@ def generate_signals(df: pd.DataFrame) -> dict:
         # Compute indicators
         df = calculate_moving_averages(df)
         df = calculate_atr(df)
+        df = calculate_rsi(df)
 
         last = df.iloc[-1]
         close = float(last["Close"])
@@ -137,11 +140,16 @@ def generate_signals(df: pd.DataFrame) -> dict:
         ma50 = float(df["MA50"].iloc[-1]) if not pd.isna(df["MA50"].iloc[-1]) else None
         ma200 = float(df["MA200"].iloc[-1]) if not pd.isna(df["MA200"].iloc[-1]) else None
 
+        # RSI
+        rsi_raw = df["RSI"].iloc[-1] if "RSI" in df.columns else None
+        rsi_val_display = round(float(rsi_raw), 1) if rsi_raw is not None and not pd.isna(rsi_raw) else None
+
         # Calculate scores
         trend_score = get_trend_score(df)
         breakout_score = get_breakout_score(df)
         volume_score = get_volume_score(df)
         volatility_score = get_volatility_score(df)
+        rsi_score = get_rsi_score(df)
 
         # Assemble indicators dict
         indicators = {
@@ -178,11 +186,16 @@ def generate_signals(df: pd.DataFrame) -> dict:
             # Gap risk
             "gap_risk": gap_risk,           # HIGH/MEDIUM/LOW — based on ATR%
             "atr_pct": round(atr_pct * 100, 2),  # ATR as % of close (for display)
+            # RSI
+            "rsi": rsi_val_display,
+            # Sector ETF volume spike — used by signal rules to filter market-wide noise
+            "sector_etf_spike": sector_etf_spike,
             # Component scores
             "trend_score": trend_score,
             "breakout_score": breakout_score,
             "volume_score": volume_score,
             "volatility_score": volatility_score,
+            "rsi_score": rsi_score,
         }
 
         # Generate signals
@@ -204,6 +217,26 @@ def generate_signals(df: pd.DataFrame) -> dict:
                 short_signal["rule_details"].append(
                     f"[GAP RISK] ATR is {round(atr_pct*100,2)}% of price — PDL trigger "
                     f"likely blown through at open. Signal capped at MODERATE."
+                )
+
+        # RSI gate: suppress signals on exhausted moves.
+        # A LONG into RSI ≥ 70 is chasing an overbought extension — institutions are
+        # taking profit into the strength that triggered every other rule. A SHORT into
+        # RSI ≤ 30 is pressing an already-oversold stock. Both are low-expectancy entries.
+        # Any confidence level is suppressed to NO_SIGNAL so the setup never reaches
+        # the scanner's HIGH_PROB or WATCHLIST buckets.
+        if rsi_val_display is not None:
+            if rsi_val_display >= RSI_OVERBOUGHT and long_signal["signal"] != "NO_SIGNAL":
+                long_signal["signal"] = "NO_SIGNAL"
+                long_signal["rule_details"].append(
+                    f"[RSI GATE] RSI {rsi_val_display} ≥ {RSI_OVERBOUGHT} — move is overbought, "
+                    f"institutional profit-taking likely. Long signal suppressed."
+                )
+            if rsi_val_display <= RSI_OVERSOLD and short_signal["signal"] != "NO_SIGNAL":
+                short_signal["signal"] = "NO_SIGNAL"
+                short_signal["rule_details"].append(
+                    f"[RSI GATE] RSI {rsi_val_display} ≤ {RSI_OVERSOLD} — move is oversold, "
+                    f"short-covering risk elevated. Short signal suppressed."
                 )
 
         return {

@@ -16,11 +16,11 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.fetcher import fetch_all_stocks, fetch_global_data
+from data.fetcher import fetch_all_stocks, fetch_global_data, fetch_sector_etf_spikes
 from data.universe import STOCK_UNIVERSE
 from signals.signal_engine import generate_signals
 from scoring.scorer import calculate_long_score, calculate_short_score
-from sentiment.global_sentiment import calculate_global_score, get_sector_adjustment
+from sentiment.global_sentiment import calculate_global_score
 from risk.risk_engine import calculate_trade_levels
 from ranking.ranker import classify_stock, rank_stocks, generate_explanation
 from storage.db import initialize_db, save_results
@@ -124,6 +124,14 @@ def run_daily_pipeline(universe: dict = None) -> dict:
     stock_data = fetch_all_stocks(universe)
     logger.info(f"Fetched {len(stock_data)} stocks successfully")
 
+    # Step 2b: Fetch sector ETF volume spikes (one yfinance call per unique ETF).
+    # Used to filter F&O expiry / index rebalancing / post-holiday volume noise —
+    # a stock's volume rule only fires when its spike meaningfully exceeds the
+    # sector ETF spike on the same day.
+    unique_sectors = {info.get("sector", "Unknown") for info in universe.values()}
+    sector_etf_spikes = fetch_sector_etf_spikes(unique_sectors)
+    logger.info(f"Sector ETF spikes fetched for {len(sector_etf_spikes)}/{len(unique_sectors)} sectors")
+
     # Step 3-4: Process each stock
     results = []
     for symbol, df in stock_data.items():
@@ -137,7 +145,8 @@ def run_daily_pipeline(universe: dict = None) -> dict:
                 continue
 
             # Generate signals and indicators
-            signal_result = generate_signals(df)
+            sector_etf_spike = sector_etf_spikes.get(sector)
+            signal_result = generate_signals(df, sector_etf_spike=sector_etf_spike)
             if signal_result is None:
                 logger.debug(f"{symbol}: signal generation returned None")
                 continue
@@ -146,12 +155,10 @@ def run_daily_pipeline(universe: dict = None) -> dict:
             long_signal = signal_result["long_signal"]
             short_signal = signal_result["short_signal"]
 
-            # Calculate scores with sector-aware sentiment adjustment.
-            # Oil-beneficiary sectors (ONGC, GAIL, BPCL…) get the crude component
-            # reversed so rising crude is correctly treated as a tailwind for them.
-            long_adj, short_adj = get_sector_adjustment(global_sentiment, sector)
-            long_score  = calculate_long_score(indicators, long_signal, long_adj)
-            short_score = calculate_short_score(indicators, short_signal, short_adj)
+            # Scores are sentiment-independent — global sentiment gates the
+            # HIGH_PROB threshold in classify_stock(), it no longer boosts scores.
+            long_score  = calculate_long_score(indicators, long_signal)
+            short_score = calculate_short_score(indicators, short_signal)
 
             # Preliminary direction (scores only, no SL check yet) to know which
             # side to compute trade levels for before final classification.
@@ -161,8 +168,12 @@ def run_daily_pipeline(universe: dict = None) -> dict:
             trade_levels = calculate_trade_levels(df, _pre_direction, atr_value=indicators.get("atr"))
             sl_too_wide  = trade_levels.get("sl_too_wide", False)
 
-            # Classify — demotes one tier when the natural SL is > 2%
-            classification = classify_stock(long_score, short_score, sl_too_wide=sl_too_wide)
+            # Classify — asymmetric HIGH_PROB threshold based on global sentiment;
+            # demotes one tier when the natural SL is > 2%.
+            sentiment_class = global_sentiment.get("classification", "NEUTRAL") if global_sentiment else "NEUTRAL"
+            classification = classify_stock(long_score, short_score,
+                                            sl_too_wide=sl_too_wide,
+                                            sentiment_class=sentiment_class)
             direction = classification["direction"]
 
             # Explanation

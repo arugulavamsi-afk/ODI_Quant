@@ -25,11 +25,9 @@ MA_SHORT = 20
 MA_MEDIUM = 50
 MA_LONG = 200
 VOLUME_LOOKBACK = 20
-BREAKOUT_PERIOD = 20
-HIGH_PROB_THRESHOLD = 70     # Score >= 70 -> High Probability
+BREAKOUT_PERIOD = 252        # 52-week high/low — clears multi-month institutional resistance
+HIGH_PROB_THRESHOLD = 70     # Base HIGH_PROB threshold (sentiment-adjusted in ranker.py)
 WATCHLIST_THRESHOLD = 50     # Score 50-69 -> Watchlist
-LONG_SCORE_BOOST = 5         # Applied when global sentiment bullish
-SHORT_SCORE_BOOST = 5
 DB_PATH = "storage/odi_quant.db"
 API_HOST = "0.0.0.0"
 API_PORT = 8000

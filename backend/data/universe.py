@@ -5,6 +5,34 @@ Stocks that don't meet the MIN_VOLUME / MIN_PRICE filter in config.py
 are automatically skipped during analysis.
 """
 
+# ── Sector ETF symbols (NSE, via yfinance) ───────────────────────────────────
+# Used to compute sector-relative volume spikes. A stock's volume rule only fires
+# when its spike meaningfully exceeds the sector ETF spike on the same day —
+# filtering out F&O expiry, index rebalancing, and post-holiday volume noise that
+# lifts all stocks in the sector uniformly.
+#
+# Where no liquid sector ETF exists, NIFTYBEES.NS (Nifty 50) is the fallback.
+# Rising broad-market volume still represents noise — any stock whose volume spike
+# merely tracks Nifty volume is not showing institutional accumulation.
+SECTOR_ETFS = {
+    "Banking":    "BANKBEES.NS",    # Nippon India Bank BeES — tracks Bank Nifty
+    "Finance":    "BANKBEES.NS",    # NBFCs are highly correlated with banking
+    "IT":         "ITBEES.NS",      # Nippon India IT ETF — tracks Nifty IT
+    "Pharma":     "PHARMABEES.NS",  # Nippon India Pharma ETF — tracks Nifty Pharma
+    "Healthcare": "PHARMABEES.NS",  # Same ETF covers hospital/diagnostics broadly
+    "FMCG":       "NIFTYBEES.NS",   # No liquid FMCG ETF — Nifty 50 proxy
+    "Energy":     "NIFTYBEES.NS",   # No dedicated energy ETF — Nifty 50 proxy
+    "Metals":     "NIFTYBEES.NS",   # No dedicated metals ETF — Nifty 50 proxy
+    "Auto":       "NIFTYBEES.NS",   # No dedicated auto ETF — Nifty 50 proxy
+    "Infra":      "NIFTYBEES.NS",   # No dedicated infra ETF — Nifty 50 proxy
+    "Consumer":   "NIFTYBEES.NS",   # No dedicated consumer ETF — Nifty 50 proxy
+    "Telecom":    "NIFTYBEES.NS",   # Single-dominant-stock sector — Nifty proxy
+    "Media":      "NIFTYBEES.NS",   # Illiquid sector — Nifty proxy
+}
+# Default ETF for sectors not listed above
+SECTOR_ETF_DEFAULT = "NIFTYBEES.NS"
+
+
 STOCK_UNIVERSE = {
 
     # ── IT / Technology ───────────────────────────────────────────────────────
