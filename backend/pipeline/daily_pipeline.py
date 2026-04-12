@@ -12,7 +12,7 @@ Steps:
 import logging
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,7 +24,9 @@ from sentiment.global_sentiment import calculate_global_score
 from risk.risk_engine import calculate_trade_levels
 from ranking.ranker import classify_stock, rank_stocks, generate_explanation
 from storage.db import initialize_db, save_results
-from config import MIN_VOLUME, MIN_PRICE, MAX_PRICE
+from config import (MIN_VOLUME, MIN_PRICE, MAX_PRICE,
+                    MAX_DAILY_LOSS_PCT, MAX_CONCURRENT_POSITIONS,
+                    MAX_SECTOR_EXPOSURE_PCT, COMMISSION_PCT)
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,9 @@ def run_daily_pipeline(universe: dict = None) -> dict:
     if universe is None:
         universe = STOCK_UNIVERSE
 
-    run_date = datetime.now().strftime("%Y-%m-%d")
+    run_dt   = datetime.now()
+    run_date = run_dt.strftime("%Y-%m-%d")
+    run_timestamp = run_dt.strftime("%Y-%m-%d %H:%M:%S")
     logger.info(f"Starting ODI Quant pipeline for {run_date}")
 
     # Initialize DB
@@ -240,10 +244,26 @@ def run_daily_pipeline(universe: dict = None) -> dict:
         f"{summary['high_prob_short']} short, {summary['watchlist']} watchlist"
     )
 
+    # ── Portfolio risk constraints (for UI display) ───────────────────────────
+    portfolio_rules = {
+        "max_daily_loss_pct":       MAX_DAILY_LOSS_PCT,
+        "max_concurrent_positions": MAX_CONCURRENT_POSITIONS,
+        "max_sector_exposure_pct":  MAX_SECTOR_EXPOSURE_PCT,
+        "commission_pct_per_leg":   COMMISSION_PCT * 100,
+        "rules_summary": (
+            f"Stop trading today if down {MAX_DAILY_LOSS_PCT}% | "
+            f"Max {MAX_CONCURRENT_POSITIONS} open positions | "
+            f"Max {MAX_SECTOR_EXPOSURE_PCT}% capital per sector | "
+            f"Commission {COMMISSION_PCT*100:.3f}% per leg ({COMMISSION_PCT*200:.2f}% round-trip)"
+        ),
+    }
+
     return {
-        "run_date": run_date,
+        "run_date":        run_date,
+        "run_timestamp":   run_timestamp,   # full datetime — UI can show staleness warning
         "global_sentiment": _sanitize_dict(global_sentiment),
-        "stocks": ranked_results,
-        "summary": summary,
-        "status": "success",
+        "stocks":          ranked_results,
+        "summary":         summary,
+        "portfolio_rules": portfolio_rules,
+        "status":          "success",
     }

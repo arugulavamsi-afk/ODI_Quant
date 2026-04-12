@@ -16,6 +16,29 @@ RISK_PER_TRADE_PCT   = 1.0         # % of capital — max risk per trade (defaul
 #   Set to 2.0 to flag any trade that would risk more than 2% of your capital.
 RISK_WARNING_PCT     = 2.0         # % of capital — threshold for ⚠ risk warning
 
+# ── Portfolio-Level Risk Controls ─────────────────────────────────────────────
+# MAX_DAILY_LOSS_PCT: Stop trading for the day when cumulative loss hits this %.
+#   Professional desks enforce this without exception. Prevents revenge trading
+#   and spiral losses. At 2%, 3 losers at 1% risk = you stop for the day.
+MAX_DAILY_LOSS_PCT        = 2.0    # % of capital — stop trading if hit
+
+# MAX_CONCURRENT_POSITIONS: Maximum open positions at any time.
+#   Prevents correlated exposure on broad market selloffs. All signals on a scan
+#   day are correlated (same market conditions triggered them all). Take at most 5.
+MAX_CONCURRENT_POSITIONS  = 5      # max open trades simultaneously
+
+# MAX_SECTOR_EXPOSURE_PCT: Maximum % of capital in any single sector at once.
+#   Prevents HDFC/ICICI/Axis/Kotak all getting long signals on the same banking day.
+MAX_SECTOR_EXPOSURE_PCT   = 25.0   # % of capital per sector
+
+# ── Commission / Cost Model ────────────────────────────────────────────────────
+# COMMISSION_PCT: One-way cost per trade (brokerage + STT + exchange fees).
+#   Used in backtest to compute commission-adjusted expectancy.
+#   Zerodha equity delivery: ~0.03% + STT. Intraday F&O: ~0.05% all-in per leg.
+#   Conservative estimate for swing trades (delivery + STT + exchange): 0.05% one-way.
+#   Round-trip = 2 × COMMISSION_PCT applied to entry value.
+COMMISSION_PCT            = 0.0005  # 0.05% per leg → 0.1% round-trip
+
 MIN_VOLUME = 500000          # Minimum daily volume for liquidity
 MIN_PRICE = 10               # Minimum stock price (INR)
 MAX_PRICE = 50000            # Maximum stock price

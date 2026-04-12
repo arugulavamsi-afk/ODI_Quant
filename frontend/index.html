@@ -33,6 +33,9 @@
     <button class="page-tab" data-page="bigbag" onclick="showPage('bigbag')">
       💎 BigBag
     </button>
+    <button class="page-tab" data-page="runbook" onclick="showPage('runbook')">
+      📖 Runbook
+    </button>
   </div>
 
   <div class="nav-controls">
@@ -998,6 +1001,632 @@
   </div>
 
 </div><!-- /bigbagPage -->
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- RUNBOOK PAGE                                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div id="runbookPage" style="display:none">
+<div class="rb-wrap">
+
+  <!-- ── HEADER ─────────────────────────────────────────────────────────── -->
+  <div class="rb-hero">
+    <div class="rb-hero-badge">📖 RUNBOOK</div>
+    <h1 class="rb-hero-title">ODI Quant — Complete User Guide</h1>
+    <p class="rb-hero-sub">Everything you need to understand each page, the strategy behind it, and how to trade with it. Start here if you're new.</p>
+    <div class="rb-toc">
+      <a class="rb-toc-link" href="#rb-workflow">Day Workflow</a>
+      <a class="rb-toc-link" href="#rb-scanner">Stock Scanner</a>
+      <a class="rb-toc-link" href="#rb-nifty">NIFTY Options</a>
+      <a class="rb-toc-link" href="#rb-sniper">Sniper</a>
+      <a class="rb-toc-link" href="#rb-intracontra">IntraContra</a>
+      <a class="rb-toc-link" href="#rb-bigbag">BigBag</a>
+      <a class="rb-toc-link" href="#rb-glossary">Glossary</a>
+    </div>
+  </div>
+
+  <!-- ── SYSTEM OVERVIEW ────────────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-workflow">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">⚡</span>
+      <div>
+        <div class="rb-section-title">What Is ODI Quant?</div>
+        <div class="rb-section-sub">Your edge before the market opens</div>
+      </div>
+    </div>
+
+    <p class="rb-para">ODI Quant is a <strong>pre-market research tool</strong> for NSE equity traders. It fetches end-of-day (EOD) data every evening, runs technical analysis on 100+ stocks, and tells you exactly which setups to watch the next morning — with entry prices, stop-losses, and targets already calculated.</p>
+    <p class="rb-para">Think of it as your trading desk doing all the homework overnight. You arrive at 9:00 AM with a prepared watchlist instead of scrambling through charts.</p>
+
+    <div class="rb-callout rb-callout-blue">
+      <div class="rb-callout-icon">💡</div>
+      <div><strong>Core philosophy:</strong> Signals are generated from yesterday's closing data. All entry levels, stops, and targets are reference points — you must confirm them live at market open before executing. Never pre-place orders blindly based on EOD signals.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Recommended Daily Workflow</div>
+    <div class="rb-timeline">
+      <div class="rb-tl-item">
+        <div class="rb-tl-time">Previous Evening (After 4 PM)</div>
+        <div class="rb-tl-content">
+          <strong>Run the pipeline</strong> — Click "Run Analysis" on the Stock Scanner page. Takes 60–90 seconds. All pages refresh with fresh data.
+        </div>
+      </div>
+      <div class="rb-tl-item">
+        <div class="rb-tl-time">8:45 – 9:00 AM</div>
+        <div class="rb-tl-content">
+          <strong>Check Global Sentiment</strong> — Open Stock Scanner. Look at the top bar: S&amp;P 500, NASDAQ, Nifty direction. STRONG_BULLISH = green light for longs. STRONG_BEARISH = tighten up.
+        </div>
+      </div>
+      <div class="rb-tl-item">
+        <div class="rb-tl-time">9:00 – 9:15 AM (Pre-market)</div>
+        <div class="rb-tl-content">
+          <strong>Review your watchlists</strong> — Check IntraContra for intraday setups (PDH/PDL alerts). Check Sniper for swing trade patterns. Note your entry triggers and gap invalidation levels.
+        </div>
+      </div>
+      <div class="rb-tl-item">
+        <div class="rb-tl-time">9:15 – 9:30 AM (Market Open)</div>
+        <div class="rb-tl-content">
+          <strong>Observe only</strong> — Never trade the first 15 minutes. Watch if your setups are gapping up/down. If a stock opens more than 1% above your entry trigger, the setup is invalid — skip it.
+        </div>
+      </div>
+      <div class="rb-tl-item">
+        <div class="rb-tl-time">9:30 AM onwards</div>
+        <div class="rb-tl-content">
+          <strong>Execute confirmed setups</strong> — Only enter if the stock confirms your trigger with volume. Use the position sizes shown. Respect your stop-loss. Exit T1 target at 40%, trail the rest.
+        </div>
+      </div>
+      <div class="rb-tl-item">
+        <div class="rb-tl-time">3:15 PM</div>
+        <div class="rb-tl-content">
+          <strong>Close intraday positions</strong> — All IntraContra (intraday) trades must be flat by 3:15 PM. Swing trades (Sniper) carry overnight as intended.
+        </div>
+      </div>
+    </div>
+
+    <div class="rb-rules-grid">
+      <div class="rb-rule-card rb-rule-red">
+        <div class="rb-rule-title">🛑 Daily Stop Rule</div>
+        <div class="rb-rule-body">If you lose more than <strong>2% of capital</strong> in a single day, close the screen and stop trading. No exceptions. Losses compound — revenge trading makes it worse.</div>
+      </div>
+      <div class="rb-rule-card rb-rule-yellow">
+        <div class="rb-rule-title">⚠️ Max Positions Rule</div>
+        <div class="rb-rule-body">Never hold more than <strong>5 open positions</strong> at once. All signals on a single day are correlated — if the market falls, they all fall together.</div>
+      </div>
+      <div class="rb-rule-card rb-rule-blue">
+        <div class="rb-rule-title">📐 Sector Limit Rule</div>
+        <div class="rb-rule-body">No more than <strong>25% of capital</strong> in any one sector at a time. Three banking stocks all long = concentrated bet on one sector.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PAGE 1: STOCK SCANNER ──────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-scanner">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">📊</span>
+      <div>
+        <div class="rb-section-title">Page 1: Stock Scanner</div>
+        <div class="rb-section-sub">Your daily signal engine — the starting point for every trading day</div>
+      </div>
+    </div>
+
+    <div class="rb-strategy-pill">STRATEGY: Multi-Factor Technical Screening | UNIVERSE: 100+ NSE stocks | TIMEFRAME: Swing (1–14 days)</div>
+
+    <p class="rb-para">The Stock Scanner is the heart of ODI Quant. Every evening it analyzes over 100 NSE stocks using five independent technical signals and assigns each stock a score from 0 to 95. Stocks scoring above 70 are classified as <strong>High Probability</strong> setups — your best trade candidates for the next session.</p>
+
+    <div class="rb-section-title rb-mt">How the Scoring Works</div>
+    <p class="rb-para">Each stock is scored across five dimensions. Think of it like five independent judges — the more that agree, the stronger the signal:</p>
+
+    <div class="rb-score-grid">
+      <div class="rb-score-card">
+        <div class="rb-score-head" style="color:var(--blue)">Trend Score <span class="rb-score-max">25 pts</span></div>
+        <div class="rb-score-body">Are the moving averages (MA20, MA50, MA200) lined up in the right direction? Price above all three MAs = full score. The trend must be established before entering.</div>
+      </div>
+      <div class="rb-score-card">
+        <div class="rb-score-head" style="color:var(--green)">Breakout Score <span class="rb-score-max">25 pts</span></div>
+        <div class="rb-score-body">Is the stock breaking out above its 52-week high (not just a 20-day high)? A 52-week breakout means the stock has cleared months of overhead resistance — institutions take notice.</div>
+      </div>
+      <div class="rb-score-card">
+        <div class="rb-score-head" style="color:var(--yellow)">Volume Score <span class="rb-score-max">20 pts</span></div>
+        <div class="rb-score-body">Is volume today meaningfully higher than average? AND is the stock's volume spike bigger than its sector's spike? This filters out market-wide F&O expiry days where everything looks like it's moving on volume.</div>
+      </div>
+      <div class="rb-score-card">
+        <div class="rb-score-head" style="color:var(--gold)">Volatility Score <span class="rb-score-max">15 pts</span></div>
+        <div class="rb-score-body">Is the Average True Range (ATR) expanding? ATR expansion means the stock's daily range is growing — momentum is building. Contracting ATR = the move is fizzling.</div>
+      </div>
+      <div class="rb-score-card">
+        <div class="rb-score-head" style="color:var(--red)">RSI Score <span class="rb-score-max">10 pts</span></div>
+        <div class="rb-score-body">Is RSI between 40–65? This is the "sweet spot" — the stock has momentum but isn't overbought yet. RSI above 70 = signal is suppressed (too extended). RSI below 30 = signal is suppressed (too beaten down).</div>
+      </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Reading the Signal Categories</div>
+    <div class="rb-cat-grid">
+      <div class="rb-cat-card" style="border-left:3px solid var(--green)">
+        <div class="rb-cat-label" style="color:var(--green)">HIGH_PROB_LONG</div>
+        <div class="rb-cat-body">Score ≥ 70. All major signals align bullish. This is your priority watchlist for long entries. Expect 3–5 of these per scan day on average.</div>
+      </div>
+      <div class="rb-cat-card" style="border-left:3px solid var(--red)">
+        <div class="rb-cat-label" style="color:var(--red)">HIGH_PROB_SHORT</div>
+        <div class="rb-cat-body">Score ≥ 70, bearish direction. All signals align for a downside move. Only trade short setups when Global Sentiment is BEARISH or NEUTRAL — never short into a strong bull market.</div>
+      </div>
+      <div class="rb-cat-card" style="border-left:3px solid var(--yellow)">
+        <div class="rb-cat-label" style="color:var(--yellow)">WATCHLIST</div>
+        <div class="rb-cat-body">Score 50–69. Setup is building but not fully confirmed. Add to your watchlist and check again next day. These often become HIGH_PROB on the following session.</div>
+      </div>
+      <div class="rb-cat-card" style="border-left:3px solid var(--text-dim)">
+        <div class="rb-cat-label" style="color:var(--text-muted)">NO_TRADE</div>
+        <div class="rb-cat-body">Score below 50. No edge present. Do not trade. The system shows these for transparency so you understand why a stock was rejected.</div>
+      </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Understanding the Trade Levels</div>
+    <p class="rb-para">Expand any stock row to see pre-calculated trade levels. Here is what each number means:</p>
+
+    <div class="rb-levels-table">
+      <div class="rb-levels-row rb-levels-header">
+        <div>Level</div><div>What It Is</div><div>What To Do</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--blue)">Entry Trigger</div>
+        <div>PDH + 0.1% (Previous Day's High + small buffer)</div>
+        <div>Buy only if price trades above this level tomorrow. Set an alert or buy-stop order here.</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--yellow)">Gap Invalidation</div>
+        <div>PDH × 1.01 — 1% above entry trigger</div>
+        <div>If the stock opens above this, the setup is <strong>invalid</strong>. The move already happened overnight. Do not chase. Skip the trade.</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--red)">Stop Loss</div>
+        <div>PDL × 0.999 (Previous Day's Low minus small buffer)</div>
+        <div>Exit 100% of position if price falls here. This is non-negotiable. Place this order immediately after entry.</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--green)">Target 1 (2×ATR)</div>
+        <div>Entry + 2 × Average True Range</div>
+        <div>Exit 40% of your position here. Move stop-loss to breakeven (your entry price). You are now in a "free trade."</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--green)">Target 2 (4×ATR)</div>
+        <div>Entry + 4 × Average True Range</div>
+        <div>Exit another 40% here. Typical 1–2 week hold for swing trades.</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--green)">Target 3 (6×ATR)</div>
+        <div>Entry + 6 × Average True Range</div>
+        <div>Trail the remaining 20% with the 10-day EMA. Let this run as long as the trend continues. No time cap.</div>
+      </div>
+    </div>
+
+    <div class="rb-callout rb-callout-yellow">
+      <div class="rb-callout-icon">⚠️</div>
+      <div><strong>Gap Risk Warning:</strong> If a stock's ATR is above 2% of its price, it is flagged as HIGH GAP RISK. This means overnight gaps frequently blow through the entry trigger before you can trade. The system will show this flag in red. Reduce position size or skip the setup entirely.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Global Sentiment Bar — Reading the Macro</div>
+    <p class="rb-para">The colored bar at the top of the scanner shows the global mood across 7 markets. This adjusts the signal threshold automatically:</p>
+    <div class="rb-sentiment-legend">
+      <div class="rb-sl-item" style="background:var(--green-dim);border:1px solid var(--green)"><span style="color:var(--green)">STRONG_BULLISH</span> — High bar (score ≥ 75 needed). Institutions are euphoric, markets extended. Be selective.</div>
+      <div class="rb-sl-item" style="background:var(--blue-dim);border:1px solid var(--blue)"><span style="color:var(--blue)">NEUTRAL</span> — Standard bar (score ≥ 70). Trade normally per system rules.</div>
+      <div class="rb-sl-item" style="background:var(--red-dim);border:1px solid var(--red)"><span style="color:var(--red)">STRONG_BEARISH</span> — Lower bar (score ≥ 62). Fear-driven selloffs produce the best dip-buy setups. Be more aggressive on longs with strong scores.</div>
+    </div>
+  </section>
+
+  <!-- ── PAGE 2: NIFTY OPTIONS ──────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-nifty">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">⚡</span>
+      <div>
+        <div class="rb-section-title">Page 2: NIFTY Options</div>
+        <div class="rb-section-sub">Next-day NIFTY 50 options strategy with Black-Scholes pricing</div>
+      </div>
+    </div>
+
+    <div class="rb-strategy-pill">STRATEGY: Directional Options | INSTRUMENT: NIFTY 50 Index Options | TIMEFRAME: Next-day (1 DTE)</div>
+
+    <p class="rb-para">This page analyses NIFTY 50's technical position and recommends a specific options strategy for the next trading session. Options are derivative instruments — you pay a small premium upfront to control a large notional position. The reward can be 3–10× the premium paid, but you can lose 100% of the premium if wrong.</p>
+
+    <div class="rb-callout rb-callout-red">
+      <div class="rb-callout-icon">🚨</div>
+      <div><strong>Options Warning:</strong> Options are high-risk instruments. Never risk more than 1–2% of capital on a single options trade. The premium shown is an estimate using Black-Scholes — always verify actual premiums on NSE before trading. Options can expire worthless.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Greeks — What They Mean for You</div>
+    <p class="rb-para">The "Greeks" are numbers that describe how an option's price will move. You don't need to calculate them — the system does it. You just need to know what they're telling you:</p>
+
+    <div class="rb-greek-grid">
+      <div class="rb-greek-card">
+        <div class="rb-greek-sym">Δ</div>
+        <div class="rb-greek-name">Delta</div>
+        <div class="rb-greek-body">How much the option price moves for every ₹1 move in NIFTY. Delta of 0.5 means if NIFTY moves ₹100, your option gains ₹50. Higher delta = more responsive to the index move.</div>
+      </div>
+      <div class="rb-greek-card">
+        <div class="rb-greek-sym">Θ</div>
+        <div class="rb-greek-name">Theta (Time Decay)</div>
+        <div class="rb-greek-body">How much value the option loses every day just by time passing. Theta of -₹50 means your option loses ₹50 in value overnight even if NIFTY doesn't move. This is the options buyer's enemy.</div>
+      </div>
+      <div class="rb-greek-card">
+        <div class="rb-greek-sym">γ</div>
+        <div class="rb-greek-name">Gamma</div>
+        <div class="rb-greek-body">How fast Delta itself changes. High gamma near expiry means small NIFTY moves create large delta swings — the option becomes very sensitive. Good for quick moves, risky if wrong.</div>
+      </div>
+      <div class="rb-greek-card">
+        <div class="rb-greek-sym">IV</div>
+        <div class="rb-greek-name">Implied Volatility</div>
+        <div class="rb-greek-body">The market's expectation of future movement, expressed as annualized %. High IV = expensive options (you're paying a premium for uncertainty). Low IV = cheap options. The system uses 30-day Historical Volatility as a proxy.</div>
+      </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">How to Use This Page</div>
+    <div class="rb-steps">
+      <div class="rb-step"><span class="rb-step-num">1</span><div>Click <strong>"Analyse NIFTY"</strong> to fetch fresh data. The system looks at NIFTY's trend (MA20/50/200), ATR, RSI, VIX, and global sentiment.</div></div>
+      <div class="rb-step"><span class="rb-step-num">2</span><div>Check the <strong>Strategy Card</strong> — it tells you the direction (BULLISH/BEARISH/NEUTRAL) and the recommended strategy (e.g., "Buy ATM Call", "Bull Call Spread").</div></div>
+      <div class="rb-step"><span class="rb-step-num">3</span><div>Check the <strong>Strike Selection Card</strong> — it shows you exactly which strike price to buy, which to sell (for spreads), and the expiry date.</div></div>
+      <div class="rb-step"><span class="rb-step-num">4</span><div>Check the <strong>Trade Plan Card</strong> — entry premium, stop-loss (exit if option loses 35% of premium), and two targets.</div></div>
+      <div class="rb-step"><span class="rb-step-num">5</span><div><strong>Verify on NSE before trading</strong> — check the actual live premium on NSE's options chain. The system's premium is a model estimate, not a live market quote.</div></div>
+    </div>
+
+    <div class="rb-section-title rb-mt">IV Environments Explained</div>
+    <div class="rb-iv-grid">
+      <div class="rb-iv-card" style="border-top:2px solid var(--green)"><div class="rb-iv-label">LOW IV</div><div>Options are cheap. Buying premium is attractive. Good time for directional bets (buy calls or puts).</div></div>
+      <div class="rb-iv-card" style="border-top:2px solid var(--yellow)"><div class="rb-iv-label">MODERATE IV</div><div>Normal environment. Standard strategies work. Don't overpay — size moderately.</div></div>
+      <div class="rb-iv-card" style="border-top:2px solid var(--red)"><div class="rb-iv-label">ELEVATED IV</div><div>Options are expensive. Avoid buying premium — you'll pay too much for the right to profit. Selling spreads is better here.</div></div>
+    </div>
+  </section>
+
+  <!-- ── PAGE 3: SNIPER ─────────────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-sniper">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">🎯</span>
+      <div>
+        <div class="rb-section-title">Page 3: Sniper (Trend-Pullback)</div>
+        <div class="rb-section-sub">Find the best swing trade setups in NIFTY 100 stocks</div>
+      </div>
+    </div>
+
+    <div class="rb-strategy-pill">STRATEGY: Trend Following + Pullback Entry | UNIVERSE: NIFTY 100 | TIMEFRAME: Swing (1–4 weeks)</div>
+
+    <p class="rb-para">The Sniper page uses a professional 7-phase framework to find stocks in strong uptrends that have pulled back to a key support level — ready to resume their move. This is how institutional momentum traders operate: ride the trend, but enter on the pullback (not at the top).</p>
+    <p class="rb-para">The logic: a stock that has proven itself by reaching a 52-week high, then pulls back to its 21-day EMA with contracting volume, is a high-probability buy. Volume contraction during a pullback signals that sellers are weak — smart money is holding. When volume expands again, the move resumes.</p>
+
+    <div class="rb-section-title rb-mt">The 7 Phases — Step by Step</div>
+
+    <div class="rb-phase-list">
+      <div class="rb-phase">
+        <div class="rb-phase-header">
+          <span class="rb-phase-num">Phase 1</span>
+          <span class="rb-phase-name">Market Context Filter</span>
+        </div>
+        <div class="rb-phase-body">
+          <p>Before looking at any individual stock, the system checks whether the overall market environment supports buying. <strong>If the market itself is broken, no individual stock setup matters.</strong></p>
+          <ul class="rb-list">
+            <li><strong>Nifty 50 vs 50 EMA:</strong> If Nifty is below its 50-day EMA, the system switches to CAUTION mode. Don't aggressively buy new positions.</li>
+            <li><strong>India VIX:</strong> The "fear gauge." Below 18 = calm, deploy 100% capital. 18–22 = caution, deploy 70%. Above 22 = high fear, stay in cash. You cannot fight a panicking market.</li>
+          </ul>
+          <div class="rb-callout rb-callout-blue" style="margin-top:10px">
+            <div class="rb-callout-icon">💡</div>
+            <div>VIX above 22 is not a failure — it's the system protecting your capital. The best trades happen when VIX drops back below 18 and the market resumes its uptrend.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rb-phase">
+        <div class="rb-phase-header">
+          <span class="rb-phase-num">Phase 2</span>
+          <span class="rb-phase-name">Sector Rotation</span>
+        </div>
+        <div class="rb-phase-body">
+          <p>Not all sectors move at the same time. The system ranks 10 NSE sectoral indices by their 4-week relative strength vs Nifty. <strong>You want to buy stocks in the sectors that are leading, not lagging.</strong></p>
+          <p style="margin-top:8px">The top 3 ranked sectors (marked 🔥) are where the best stocks are likely hiding. A banking stock is more likely to succeed when the banking sector ETF is outperforming. Sector rotation is how institutional money flows — follow it.</p>
+          <ul class="rb-list" style="margin-top:8px">
+            <li><strong>4-Week RS:</strong> How much stronger/weaker this sector has been vs Nifty over the past month.</li>
+            <li><strong>1-Week Momentum:</strong> ACCELERATING means the sector is picking up speed. DECELERATING means it's peaking — be cautious.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rb-phase">
+        <div class="rb-phase-header">
+          <span class="rb-phase-num">Phase 3</span>
+          <span class="rb-phase-name">Quality Gate</span>
+        </div>
+        <div class="rb-phase-body">
+          <p>Every NIFTY 100 stock passes through two mandatory filters before being analyzed:</p>
+          <ul class="rb-list">
+            <li><strong>Close &gt; 200 EMA:</strong> The stock must be in a long-term uptrend. Never buy a stock that's below its 200-day average — that's a downtrend.</li>
+            <li><strong>Daily Turnover ≥ ₹10 Crore:</strong> The stock must be liquid enough to enter and exit cleanly. Illiquid stocks produce bad fills and wide spreads.</li>
+          </ul>
+          <p style="margin-top:8px">Stocks within 10% of their 52-week high are ranked first — these are breakout candidates with proven institutional interest.</p>
+        </div>
+      </div>
+
+      <div class="rb-phase">
+        <div class="rb-phase-header">
+          <span class="rb-phase-num">Phase 4</span>
+          <span class="rb-phase-name">Pattern Arsenal — The 3 Setups</span>
+        </div>
+        <div class="rb-phase-body">
+          <p>After passing quality gates, each stock is checked for three specific patterns. These are the actual trade setups:</p>
+
+          <div class="rb-pattern-card">
+            <div class="rb-pattern-name">📐 EMA Pullback</div>
+            <div class="rb-pattern-what"><strong>What it is:</strong> The stock is in an uptrend (above 50 EMA) and has pulled back close to its 21-day EMA (within 3%). Volume contracted during the pullback (sellers dried up), then started picking up again — signaling resumption.</div>
+            <div class="rb-pattern-entry"><strong>Entry:</strong> Current price | <strong>Stop:</strong> 21 EMA × 0.99 | <strong>Targets:</strong> 2×ATR, 3×ATR, 4×ATR</div>
+            <div class="rb-pattern-why"><strong>Why it works:</strong> The 21 EMA acts as a magnet for institutional buy programs. When a stock that was going up comes back to test this level on low volume, big funds are buying quietly. The volume pickup confirms they're done accumulating and ready to push higher.</div>
+          </div>
+
+          <div class="rb-pattern-card">
+            <div class="rb-pattern-name">🚀 Base Breakout (VCP)</div>
+            <div class="rb-pattern-what"><strong>What it is:</strong> The stock spent 4–8 weeks in a tight consolidation range (less than 8% total range), then broke above with 2× average volume and a strong close (above 60% of the day's range). This is Mark Minervini's Volatility Contraction Pattern (VCP).</div>
+            <div class="rb-pattern-entry"><strong>Entry:</strong> Break above 30-day high | <strong>Stop:</strong> Base high × 0.98 | <strong>Targets:</strong> 2×ATR, 4×ATR, 6×ATR</div>
+            <div class="rb-pattern-why"><strong>Why it works:</strong> A tight base means institutional investors have been absorbing supply (buying from weak hands) without letting the price fall. When they're done accumulating, volume explodes upward. This is how stocks go from ₹500 to ₹1,000 in a year.</div>
+          </div>
+
+          <div class="rb-pattern-card">
+            <div class="rb-pattern-name">⬆️ Gap Reversal</div>
+            <div class="rb-pattern-what"><strong>What it is:</strong> The stock gapped up/down by 1.5%+ on a previous day, then consolidated tightly within the gap-day's range (± 1.2%). When price breaks back above the gap-day's high, the reversal is confirmed.</div>
+            <div class="rb-pattern-entry"><strong>Entry:</strong> Gap high + 0.1% | <strong>Stop:</strong> Consolidation low | <strong>Targets:</strong> 2×ATR, 3×ATR, 4×ATR</div>
+            <div class="rb-pattern-why"><strong>Why it works:</strong> A gap-up on strong earnings or news creates a new "floor" of buyers who entered on the gap. If the stock consolidates in a tight range (rather than immediately selling off), it shows conviction. The subsequent breakout is clean — everyone who didn't buy on the gap now chases.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rb-phase">
+        <div class="rb-phase-header">
+          <span class="rb-phase-num">Phases 5–7</span>
+          <span class="rb-phase-name">Position Sizing, Trade Management &amp; Review</span>
+        </div>
+        <div class="rb-phase-body">
+          <p>Use the <strong>Position Calculator</strong> built into the page. Enter your total capital, the entry price, and your stop-loss — the calculator tells you exactly how many shares to buy so you never risk more than your chosen percentage.</p>
+          <ul class="rb-list" style="margin-top:8px">
+            <li><strong>At T1 (1:2 R:R):</strong> Exit 50% of position. Move stop-loss to your entry price (breakeven). Now you cannot lose money on this trade.</li>
+            <li><strong>Remaining 50%:</strong> Trail with the 10-day EMA. Sell only if price closes below the 10 EMA on the daily chart.</li>
+            <li><strong>Max 6 open Sniper positions</strong> at once (Portfolio heat ≤ 12% of capital).</li>
+            <li><strong>Monthly drawdown limit:</strong> If down 8% in a month, stop all new Sniper trades for the rest of the month.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PAGE 4: INTRACONTRA ───────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-intracontra">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">⚡</span>
+      <div>
+        <div class="rb-section-title">Page 4: IntraContra</div>
+        <div class="rb-section-sub">Intraday level-based setups on 20 high-liquidity F&amp;O stocks</div>
+      </div>
+    </div>
+
+    <div class="rb-strategy-pill">STRATEGY: PDH/PDL Level Breakouts + Session TP Mean Reversion | UNIVERSE: 20 curated F&O names | TIMEFRAME: Intraday (same day)</div>
+
+    <p class="rb-para">IntraContra is a <strong>pre-market preparation tool</strong> for intraday traders. It analyzes 20 of India's most liquid Nifty stocks every evening and tells you exactly which levels to watch the next morning, what setups to expect, and how to size your positions.</p>
+
+    <div class="rb-callout rb-callout-yellow">
+      <div class="rb-callout-icon">⚠️</div>
+      <div><strong>Important:</strong> IntraContra generates EOD-based alerts — not live signals. The setups shown are levels to watch at market open. You must confirm with live price action and volume before entering. These are pre-market homework assignments, not automated buy/sell orders.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Key Concepts You Must Know</div>
+
+    <div class="rb-concept-grid">
+      <div class="rb-concept-card">
+        <div class="rb-concept-name">PDH / PDL</div>
+        <div class="rb-concept-body"><strong>Previous Day High / Previous Day Low.</strong> The most important intraday reference levels. Institutional algorithms are programmed to defend these levels. A clean break above PDH with volume = bullish. A break below PDL with volume = bearish. These levels are where the most reliable intraday moves happen.</div>
+      </div>
+      <div class="rb-concept-card">
+        <div class="rb-concept-name">Session TP (Typical Price)</div>
+        <div class="rb-concept-body"><strong>(PDH + PDL + Close) ÷ 3.</strong> This is the prior session's "fair value" — the average price around which the previous day's volume was concentrated. When price deviates more than 1.5% from this level early in the day, there's a statistical tendency to revert back toward it. This is your mean-reversion anchor.</div>
+      </div>
+      <div class="rb-concept-card">
+        <div class="rb-concept-name">20D Rolling VWAP</div>
+        <div class="rb-concept-body"><strong>Volume-Weighted Average Price over 20 days.</strong> This tells you the swing trend: above 20D VWAP = bullish multi-day regime, below = bearish. Used only for directional bias — not as an intraday entry level (it moves too slowly for that).</div>
+      </div>
+      <div class="rb-concept-card">
+        <div class="rb-concept-name">ATR (Average True Range)</div>
+        <div class="rb-concept-body">The stock's average daily move over 14 days. A stock with 1.5% ATR typically moves ₹15 on a ₹1,000 stock per day. For qualification, the system requires ATR ≥ 1.5% — if the stock doesn't move enough, there's no opportunity to profit intraday.</div>
+      </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">The 5 Intraday Setups</div>
+
+    <div class="rb-setup-list">
+      <div class="rb-setup-card" style="border-left:3px solid var(--green)">
+        <div class="rb-setup-name" style="color:var(--green)">🟢 PDH Breakout (Bullish Continuation)</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Yesterday's close was within 0–2% above PDH. Swing bias is bullish (above 20D VWAP). 9 EMA aligned upward.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Watch for price to break and hold above PDH at open with above-average volume. Entry just above PDH (PDH × 1.002). Stop-loss 0.5% below PDH. Targets: 2×ATR and 3×ATR.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> PDH acts as a magnet. Traders who bought yesterday at the high are break-even — any move above is profit for them, and new buyers push the momentum. Institutional algorithms run at PDH levels.</div>
+      </div>
+
+      <div class="rb-setup-card" style="border-left:3px solid var(--red)">
+        <div class="rb-setup-name" style="color:var(--red)">🔴 PDL Breakdown (Bearish Continuation)</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Yesterday's close was within 0–2% below PDL. Swing bias is bearish (below 20D VWAP). 9 EMA pointing down.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Watch for price to break and hold below PDL at open with volume. Short entry just below PDL. Stop-loss 0.5% above PDL.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Mirror of PDH. Yesterday's low is where sellers took control. Breaking below with volume signals that sellers are dominating and the move continues down.</div>
+      </div>
+
+      <div class="rb-setup-card" style="border-left:3px solid var(--blue)">
+        <div class="rb-setup-name" style="color:var(--blue)">↩️ Session TP Reversion — Long (Mean Reversion)</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Price is 1.5%+ BELOW Session TP AND RSI is below 38 (oversold). Only valid 9:30 AM – 11:30 AM.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Buy at current price. Stop-loss below 3-day swing low. Target is the Session TP level (your mean-reversion anchor).</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> In the early session, price tends to mean-revert toward the prior day's fair value. If the stock has been beaten down 1.5%+ from that anchor and RSI shows capitulation, a bounce back toward the anchor is highly probable. The window closes by 11:30 AM — after that, the market has found a new direction.</div>
+      </div>
+
+      <div class="rb-setup-card" style="border-left:3px solid var(--gold)">
+        <div class="rb-setup-name" style="color:var(--gold)">↪️ Session TP Reversion — Short (Mean Reversion)</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Price is 1.5%+ ABOVE Session TP AND RSI is above 62. Only valid 9:30 AM – 11:30 AM.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Short at current price. Stop-loss above 3-day swing high. Target is the Session TP level.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Same principle as above, reversed. Morning euphoria often overshoots the prior day's anchor. When RSI confirms overextension, the reversion is reliable within the morning window.</div>
+      </div>
+
+      <div class="rb-setup-card" style="border-left:3px solid var(--text-muted)">
+        <div class="rb-setup-name">⬆️⬇️ Gap Plays</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Stock gapped up/down by 0.8%+ from previous close. First 15 minutes: observe only.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> After 9:30 AM, if the gap is holding (stock stays above gap-open), trade in the gap direction. If gap starts filling (stock reverting to previous close), fade it.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Gaps create reference levels. Gaps that hold (don't fill) attract momentum traders. Gaps that fail (fill back) attract mean-reversion traders. Both are tradeable — you just need to wait to see which scenario unfolds.</div>
+      </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Trading Time Windows — Critical</div>
+    <p class="rb-para">The time of day matters enormously in intraday trading. Each window has different market dynamics:</p>
+    <div class="rb-time-grid">
+      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">9:00 – 9:15 AM</div><div class="rb-time-label">Pre-Market Prep</div><div>Review IntraContra watchlist. Note your levels. Set price alerts. No orders yet.</div></div>
+      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">9:15 – 9:30 AM</div><div class="rb-time-label">Opening Chaos</div><div>Observe only. Never trade the first 15 minutes — liquidity is thin and direction is unpredictable. Watch which direction the market opens.</div></div>
+      <div class="rb-time-card rb-time-prime"><div class="rb-time-period">9:30 – 10:15 AM</div><div class="rb-time-label">Prime Window</div><div>The best time for PDH/PDL breakouts and gap plays. Volume is highest. Moves are cleanest. This is when you execute.</div></div>
+      <div class="rb-time-card rb-time-prime"><div class="rb-time-period">10:15 – 11:30 AM</div><div class="rb-time-label">Momentum + Reversion</div><div>Continue to hold winning trades from the prime window. Good time for Session TP reversion setups. Trend continuation trades still work.</div></div>
+      <div class="rb-time-card rb-time-avoid"><div class="rb-time-period">11:30 AM – 12:30 PM</div><div class="rb-time-label">DEAD ZONE — No Trades</div><div>Lunch hour. Volume collapses. Random choppy moves. This is when bad trades happen. Put down the screen.</div></div>
+      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">12:30 – 2:00 PM</div><div class="rb-time-label">Afternoon Session</div><div>Institutional activity resumes. Continuation of morning trends or new direction. Be cautious — assess risk vs. time remaining.</div></div>
+      <div class="rb-time-card rb-time-exit"><div class="rb-time-period">2:00 – 3:15 PM</div><div class="rb-time-label">Exit Window</div><div>All intraday positions MUST be flat by 3:15 PM. Never hold intraday positions overnight — costs, risk, and gaps are undefined.</div></div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Risk Tiers — Which to Use</div>
+    <div class="rb-risk-grid">
+      <div class="rb-risk-card" style="border-top:2px solid var(--green)">
+        <div class="rb-risk-name">Normal (1% per trade)</div>
+        <div class="rb-risk-when">Use for: Standard PDH/PDL setups with clear volume confirmation</div>
+      </div>
+      <div class="rb-risk-card" style="border-top:2px solid var(--blue)">
+        <div class="rb-risk-name">High Conviction (2% per trade)</div>
+        <div class="rb-risk-when">Use for: Multiple confluences (e.g., PDH Breakout + above 20D VWAP + strong global sentiment). Only 1–2 per week maximum.</div>
+      </div>
+      <div class="rb-risk-card" style="border-top:2px solid var(--yellow)">
+        <div class="rb-risk-name">Reduced (0.5% per trade)</div>
+        <div class="rb-risk-when">Use after: 2 consecutive losing trades. Automatically drop to half size. Let yourself recover psychology before sizing back up.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PAGE 5: BIGBAG ─────────────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-bigbag">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">💎</span>
+      <div>
+        <div class="rb-section-title">Page 5: BigBag</div>
+        <div class="rb-section-sub">Long-term compounders screened by the EMPIRE quality framework</div>
+      </div>
+    </div>
+
+    <div class="rb-strategy-pill">STRATEGY: Quality-at-Reasonable-Price Compounding | UNIVERSE: 47 curated quality stocks | TIMEFRAME: 1–10 years</div>
+
+    <p class="rb-para">BigBag is not a trading strategy — it's an <strong>investing strategy</strong>. The goal is to identify businesses that can grow their earnings at 20%+ per year for a decade, buy them at reasonable valuations, and hold through volatility. This is how ₹5 lakh becomes ₹50 lakh over 7–10 years without constant trading.</p>
+    <p class="rb-para">The philosophy: instead of making 100 small trades, find 5–10 exceptional businesses and let compounding do the heavy lifting. Warren Buffett calls this "buying wonderful companies at fair prices."</p>
+
+    <div class="rb-section-title rb-mt">The EMPIRE Framework — 6 Quality Filters</div>
+    <p class="rb-para">Every stock in the universe is scored across 6 dimensions. Each has a maximum score — stocks are ranked by their total EMPIRE score (0–100):</p>
+
+    <div class="rb-empire-grid">
+      <div class="rb-empire-card">
+        <div class="rb-empire-letter">E</div>
+        <div class="rb-empire-name">Earnings Quality <span class="rb-empire-pts">20 pts</span></div>
+        <div class="rb-empire-body">Return on Equity (ROE) ≥ 25% = 20 pts. ROE measures how efficiently the business uses shareholder money to generate profit. A 25% ROE means for every ₹100 of equity, the business earns ₹25 in profit — exceptional. Below 15% = 0 pts.</div>
+      </div>
+      <div class="rb-empire-card">
+        <div class="rb-empire-letter">M</div>
+        <div class="rb-empire-name">EPS Momentum <span class="rb-empire-pts">20 pts</span></div>
+        <div class="rb-empire-body">EPS (Earnings Per Share) growth rate. ≥ 25% annual growth = 20 pts. This is the most important single number for stock price appreciation. A company growing earnings at 25% per year will, on average, see its stock price double every 3 years (if valuation holds).</div>
+      </div>
+      <div class="rb-empire-card">
+        <div class="rb-empire-letter">P</div>
+        <div class="rb-empire-name">Profit Margin <span class="rb-empire-pts">15 pts</span></div>
+        <div class="rb-empire-body">Operating margin ≥ 20% = 15 pts. High margins = pricing power = moat. A business that can charge more than competitors without losing customers is protected from disruption. Low margins mean the business is a commodity — vulnerable to competition and cost pressures.</div>
+      </div>
+      <div class="rb-empire-card">
+        <div class="rb-empire-letter">I</div>
+        <div class="rb-empire-name">Revenue Growth <span class="rb-empire-pts">15 pts</span></div>
+        <div class="rb-empire-body">Top-line revenue growth ≥ 20% = 15 pts. Companies can sometimes inflate EPS by cutting costs without growing revenue — the P score catches this. You want revenue and earnings growing together. Revenue growth without earnings growth = bad management. Earnings growth without revenue growth = unsustainable.</div>
+      </div>
+      <div class="rb-empire-card">
+        <div class="rb-empire-letter">R</div>
+        <div class="rb-empire-name">Resilience (Debt) <span class="rb-empire-pts">15 pts</span></div>
+        <div class="rb-empire-body">Debt-to-Equity ratio ≤ 0.1 = 15 pts. Low debt companies survive downturns. High debt companies get destroyed in recessions — they may be forced to dilute equity or default. A D/E above 0.5 = 0 pts. Exception: banking and finance companies are excluded from this filter (leverage is their business model).</div>
+      </div>
+      <div class="rb-empire-card">
+        <div class="rb-empire-letter">E</div>
+        <div class="rb-empire-name">Entry Valuation (PEG) <span class="rb-empire-pts">15 pts</span></div>
+        <div class="rb-empire-body">PEG ratio &lt; 1.0 = 15 pts. PEG = P/E ratio ÷ EPS growth rate. A PEG below 1.0 means you're paying less than the growth rate — good value. A PEG above 2.0 = 0 pts — you're overpaying for growth. Even a great business is a bad investment if you overpay for it.</div>
+      </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Conviction Tiers — How Much to Invest</div>
+    <div class="rb-tier-grid">
+      <div class="rb-tier-card" style="border:1px solid var(--green);background:var(--green-dim)">
+        <div class="rb-tier-name" style="color:var(--green)">TIER-1</div>
+        <div class="rb-tier-score">EMPIRE ≥ 70 AND PE ≤ 60</div>
+        <div class="rb-tier-alloc">Allocation: 8–12% of portfolio per stock</div>
+        <div class="rb-tier-body">Highest conviction. The business is exceptional AND reasonably priced. Maximum 5 Tier-1 stocks to avoid over-concentration. These are your "buy and hold forever" positions.</div>
+      </div>
+      <div class="rb-tier-card" style="border:1px solid var(--blue);background:var(--blue-dim)">
+        <div class="rb-tier-name" style="color:var(--blue)">TIER-2</div>
+        <div class="rb-tier-score">EMPIRE 50–69, OR EMPIRE ≥ 70 with PE 60–80</div>
+        <div class="rb-tier-alloc">Allocation: 4–6% of portfolio per stock</div>
+        <div class="rb-tier-body">Good quality but either the score is lower or the price is a bit rich. Still worth owning — just don't overweight. Maximum 8 Tier-2 positions.</div>
+      </div>
+      <div class="rb-tier-card" style="border:1px solid var(--yellow);background:var(--yellow-dim)">
+        <div class="rb-tier-name" style="color:var(--yellow)">TIER-3 / WATCHLIST</div>
+        <div class="rb-tier-score">EMPIRE &lt; 50, OR PE &gt; 80 regardless of score</div>
+        <div class="rb-tier-alloc">Allocation: 2–3% or watch only</div>
+        <div class="rb-tier-body">Either the business quality is lower OR the price is speculative. A PE above 80 means you're paying 80 years of current earnings — even a 20% EPS miss triggers a 40–60% stock crash. No concentrated bets at these valuations.</div>
+      </div>
+    </div>
+
+    <div class="rb-callout rb-callout-blue" style="margin-top:20px">
+      <div class="rb-callout-icon">💡</div>
+      <div><strong>PE Cap Logic:</strong> Stocks with PE &gt; 80 are automatically capped at Tier-3 regardless of how high their EMPIRE score is. Quality at 80× earnings is speculation — a single earnings disappointment can cut the stock in half. The system protects you from concentrating capital in high-quality businesses at bubble valuations.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">How to Use BigBag Practically</div>
+    <div class="rb-steps">
+      <div class="rb-step"><span class="rb-step-num">1</span><div>Click <strong>"Screen Compounders"</strong>. The system fetches fundamental data (ROE, EPS growth, margins, D/E, PEG) for ~47 quality stocks and calculates EMPIRE scores.</div></div>
+      <div class="rb-step"><span class="rb-step-num">2</span><div>Filter by <strong>"Tier 1"</strong> first. These are your best candidates. Then check their EMPIRE breakdown — do all 6 pillars score well, or is one weak?</div></div>
+      <div class="rb-step"><span class="rb-step-num">3</span><div>Check the <strong>52-Week High distance</strong> column. Stocks within 10% of their 52W high are momentum leaders. Stocks 30%+ off their highs may be value opportunities — but verify the earnings story hasn't broken.</div></div>
+      <div class="rb-step"><span class="rb-step-num">4</span><div>Use the <strong>Position Calculator</strong> to determine how many shares to buy based on your portfolio size and conviction tier.</div></div>
+      <div class="rb-step"><span class="rb-step-num">5</span><div><strong>Buy in 3 tranches</strong> minimum — 33% now, 33% if it dips 5–10%, 33% more if it dips again. Never put the full allocation in at one price.</div></div>
+      <div class="rb-step"><span class="rb-step-num">6</span><div>Review quarterly. Ask: <em>Is the earnings story still intact? Is ROE staying above 20%? Is the promoter's stake stable?</em> If yes, hold. If the business fundamentals break, sell — not because the stock fell, but because the thesis changed.</div></div>
+    </div>
+
+    <div class="rb-callout rb-callout-red">
+      <div class="rb-callout-icon">🚨</div>
+      <div><strong>BigBag has no stop-losses on core positions.</strong> Long-term investing requires tolerating 20–40% drawdowns during bear markets. If you sell Tier-1 holdings during a market crash, you break the compounding chain. The rule is: sell when the <em>business fundamentals</em> deteriorate, not when the <em>stock price</em> falls. Price volatility is not a reason to sell a great business.</div>
+    </div>
+  </section>
+
+  <!-- ── GLOSSARY ────────────────────────────────────────────────────────── -->
+  <section class="rb-section" id="rb-glossary">
+    <div class="rb-section-header">
+      <span class="rb-section-icon">📚</span>
+      <div>
+        <div class="rb-section-title">Glossary of Key Terms</div>
+        <div class="rb-section-sub">Quick reference for all trading terms used in this application</div>
+      </div>
+    </div>
+
+    <div class="rb-gloss-grid">
+      <div class="rb-gloss-item"><span class="rb-gloss-term">ATR</span><span class="rb-gloss-def">Average True Range — the average daily price move of a stock over 14 days. Used to set targets and stops in proportion to the stock's normal volatility.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">EMA</span><span class="rb-gloss-def">Exponential Moving Average — like a simple average but more weight given to recent prices. 9 EMA reacts fast (intraday), 21 EMA is intermediate, 50 EMA is medium-term trend, 200 EMA is long-term trend.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">PDH / PDL</span><span class="rb-gloss-def">Previous Day High / Previous Day Low — the price extremes from yesterday's session. Major support/resistance levels for intraday trading.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">RSI</span><span class="rb-gloss-def">Relative Strength Index — a momentum oscillator from 0–100. Above 70 = overbought (likely to pull back). Below 30 = oversold (likely to bounce). 40–65 is the sweet spot for new entries.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">VIX</span><span class="rb-gloss-def">Volatility Index — India VIX measures expected market volatility. Below 18 = calm. 18–22 = moderate. Above 22 = high fear. High VIX = reduce position sizes. Very high VIX (25+) = stay in cash.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">VWAP</span><span class="rb-gloss-def">Volume-Weighted Average Price — the average price weighted by volume traded. Institutional benchmark — they buy below VWAP and sell above. Price above VWAP = bullish session bias.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">R (R-Multiple)</span><span class="rb-gloss-def">A way to measure trade outcomes relative to risk. 1R = your defined risk (entry to stop-loss). A 2R winner means you made 2× your risk amount. A -1R loser means you lost exactly your planned risk.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">Breakeven Stop</span><span class="rb-gloss-def">Moving your stop-loss to your entry price after reaching Target 1. You can no longer lose money on that trade. The worst outcome is a scratch (0R result). This is the most important trade management rule.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">Expectancy</span><span class="rb-gloss-def">(Win Rate × Avg Win R) + (Loss Rate × Avg Loss R). A positive expectancy means the system is profitable over many trades. 0.3R expectancy = you make 0.3× your risk on average per trade.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">VCP</span><span class="rb-gloss-def">Volatility Contraction Pattern — a Minervini pattern where a stock forms progressively tighter consolidations before breaking out. The "tightening coil" effect signals institutional accumulation.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">ROE</span><span class="rb-gloss-def">Return on Equity — how much profit a business generates per rupee of shareholder capital. Above 20% = excellent. The single best measure of business quality.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">PEG Ratio</span><span class="rb-gloss-def">Price/Earnings-to-Growth ratio = P/E ÷ EPS growth rate. Below 1.0 = cheap relative to growth. Above 2.0 = expensive. The fairest single-number valuation metric for growth companies.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">D/E Ratio</span><span class="rb-gloss-def">Debt-to-Equity — total debt divided by shareholder equity. Below 0.3 = low debt, financially strong. Above 0.5 = leveraged, risky in downturns.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">Gap Invalidation</span><span class="rb-gloss-def">A price level 1% beyond your entry trigger. If a stock opens above this level at market open (gap-up), the EOD setup is stale — the trigger was blown through overnight. Skip the trade.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">Profit Factor</span><span class="rb-gloss-def">Total profit from winning trades ÷ total loss from losing trades. Above 1.5 = good. Above 2.0 = excellent. Below 1.0 = losing strategy.</span></div>
+      <div class="rb-gloss-item"><span class="rb-gloss-term">Calmar Ratio</span><span class="rb-gloss-def">Annual return ÷ maximum drawdown. Measures return per unit of pain. Above 1.0 = viable. Above 2.0 = strong. A system with 30% returns but 40% drawdown has poor Calmar (0.75).</span></div>
+    </div>
+
+    <div class="rb-callout rb-callout-blue" style="margin-top:20px">
+      <div class="rb-callout-icon">📖</div>
+      <div><strong>Recommended reading to deepen your edge:</strong> "How to Make Money in Stocks" by William O'Neil (for breakout trading), "Trade Like a Stock Market Wizard" by Mark Minervini (for VCP patterns), "The Disciplined Trader" by Mark Douglas (for psychology), "One Up on Wall Street" by Peter Lynch (for fundamental long-term investing).</div>
+    </div>
+  </section>
+
+</div><!-- /rb-wrap -->
+</div><!-- /runbookPage -->
 
 <!-- ── LOADER OVERLAY ──────────────────────────────────────────────────── -->
 <div class="loader-overlay" id="loaderOverlay" style="display:none">

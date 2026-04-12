@@ -487,11 +487,12 @@ function showPage(page) {
 
   const isScanner  = page === 'scanner';
   const isStrategy = page === 'strategy';
-  document.getElementById('scannerPage').style.display  = isScanner  ? '' : 'none';
-  document.getElementById('niftyPage').style.display    = page === 'nifty'    ? '' : 'none';
-  document.getElementById('strategyPage').style.display = isStrategy          ? '' : 'none';
-  document.getElementById('intraPage').style.display    = page === 'intra'    ? '' : 'none';
-  document.getElementById('bigbagPage').style.display   = page === 'bigbag'   ? '' : 'none';
+  document.getElementById('scannerPage').style.display  = isScanner          ? '' : 'none';
+  document.getElementById('niftyPage').style.display    = page === 'nifty'   ? '' : 'none';
+  document.getElementById('strategyPage').style.display = isStrategy         ? '' : 'none';
+  document.getElementById('intraPage').style.display    = page === 'intra'   ? '' : 'none';
+  document.getElementById('bigbagPage').style.display   = page === 'bigbag'  ? '' : 'none';
+  document.getElementById('runbookPage').style.display  = page === 'runbook' ? '' : 'none';
   document.getElementById('runBtn').style.display       = isScanner  ? '' : 'none';
   document.getElementById('lastRunTime').style.display  = isScanner  ? '' : 'none';
 }

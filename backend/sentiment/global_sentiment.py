@@ -26,12 +26,21 @@ CRUDE_BENEFICIARY_SECTORS = {
     "Refinery",            # Alternate label
 }
 
-# Sectors where a STRONG US dollar is actually a revenue tailwind
-# (USD-billed exports = more INR revenue when dollar strengthens).
-# Note: the base DXY logic is "strong dollar = FII outflow = bad",
-# which is correct at the market level but wrong for IT exporters.
-# This is NOT fixed here yet — flagged for a future sector-aware DXY pass.
-# DXY_BENEFICIARY_SECTORS = {"IT Services", "Pharma", "Chemicals"}
+# Sectors where a STRONG US dollar is actually a revenue tailwind.
+# These are USD-billed export businesses: more INR revenue when dollar strengthens.
+# Base DXY logic: strong dollar = FII outflow from India = negative.
+# That is correct at the market/index level but WRONG for these export sectors.
+# get_sector_adjustment() reverses the DXY component for these sectors, just
+# like crude_contribution is reversed for CRUDE_BENEFICIARY_SECTORS.
+DXY_BENEFICIARY_SECTORS = {
+    "IT",           # TCS, Infosys, Wipro, HCL — USD-billed contracts
+    "IT Services",  # Alternate label
+    "Technology",   # Broader tech label
+    "Pharma",       # Sun, Dr. Reddy's, Cipla — large US generics exports
+    "Pharmaceuticals",
+    "Healthcare",   # Broader pharma label
+    "Chemicals",    # Specialty chemicals with significant USD exports
+}
 
 
 def _classify_and_adjust(score: float) -> tuple:
@@ -64,6 +73,7 @@ def calculate_global_score(global_data: dict) -> dict:
     score = 0.0
     components = {}
     crude_contribution = 0.0   # stored separately for per-sector reversal
+    dxy_contribution   = 0.0   # stored separately for DXY beneficiary reversal
 
     scoring_rules = {
         "^GSPC":     {"name": "S&P 500"},
@@ -113,11 +123,12 @@ def calculate_global_score(global_data: dict) -> dict:
 
         elif symbol == "DX-Y.NYB":
             # Strong dollar = FII outflow from India (correct at market level;
-            # IT/Pharma exporters benefit — see DXY_BENEFICIARY_SECTORS note above)
+            # IT/Pharma exporters benefit — reversed via get_sector_adjustment()).
             if change > 0.5:       contribution = -1.0
             elif change > 0.25:    contribution = -0.5
             elif change < -0.5:    contribution =  1.0
             elif change < -0.25:   contribution =  0.5
+            dxy_contribution = contribution   # capture before adding to score
 
         score += contribution
         components[symbol] = {
@@ -143,12 +154,13 @@ def calculate_global_score(global_data: dict) -> dict:
         }
 
     return {
-        "score":             score,
-        "classification":    classification,
-        "long_adjustment":   long_adjustment,   # market-wide default
-        "short_adjustment":  short_adjustment,  # market-wide default
-        "crude_contribution": round(crude_contribution, 2),  # for per-sector reversal
-        "components":        components,
+        "score":              score,
+        "classification":     classification,
+        "long_adjustment":    long_adjustment,    # market-wide default
+        "short_adjustment":   short_adjustment,   # market-wide default
+        "crude_contribution": round(crude_contribution, 2),  # for crude-beneficiary reversal
+        "dxy_contribution":   round(dxy_contribution, 2),    # for DXY-beneficiary reversal
+        "components":         components,
     }
 
 
@@ -157,29 +169,44 @@ def get_sector_adjustment(global_sentiment: dict, sector: str) -> tuple:
     Returns (long_adj, short_adj) tailored for the given sector.
 
     For most sectors this is identical to the market-wide adjustment.
-    For CRUDE_BENEFICIARY_SECTORS the crude oil component is reversed:
-      - Crude up → base score gets -1 (cost pressure for consumers)
-      - But E&P / gas / refining companies PROFIT from rising crude
-      - We reverse that component: re-score the market excluding crude,
-        then add the opposite crude signal for the beneficiary sector.
 
-    The reversal is: sector_score = base_score - crude_contribution + (-crude_contribution)
-                                  = base_score - 2 × crude_contribution
-    This cancels the consumer penalty and adds an equal producer benefit.
+    CRUDE reversal (CRUDE_BENEFICIARY_SECTORS):
+      Base score treats rising crude as -1 (cost pressure for India).
+      E&P / gas / refiners PROFIT from rising crude, so we reverse that component:
+        sector_score = base_score - 2 × crude_contribution
+      This cancels the consumer penalty and adds an equal producer benefit.
+
+    DXY reversal (DXY_BENEFICIARY_SECTORS):
+      Base score treats strong dollar as -1 (FII outflow from India).
+      IT and Pharma exporters receive more INR revenue when USD strengthens.
+      Same reversal logic:
+        sector_score = base_score - 2 × dxy_contribution
+      Applied AFTER any crude adjustment so both can stack for energy exporters
+      with USD billing (rare but correct to handle).
     """
     base_long  = global_sentiment.get("long_adjustment", 0)
     base_short = global_sentiment.get("short_adjustment", 0)
+    base_score = global_sentiment.get("score", 0)
 
-    if sector not in CRUDE_BENEFICIARY_SECTORS:
+    sector_score = base_score
+
+    # ── Crude reversal ────────────────────────────────────────────────────────
+    if sector in CRUDE_BENEFICIARY_SECTORS:
+        crude_contribution = global_sentiment.get("crude_contribution", 0)
+        if crude_contribution != 0:
+            sector_score = sector_score - 2 * crude_contribution
+
+    # ── DXY reversal ─────────────────────────────────────────────────────────
+    if sector in DXY_BENEFICIARY_SECTORS:
+        dxy_contribution = global_sentiment.get("dxy_contribution", 0)
+        if dxy_contribution != 0:
+            sector_score = sector_score - 2 * dxy_contribution
+
+    if sector_score == base_score:
+        # No reversal applied — return the pre-computed market-wide values
         return base_long, base_short
 
-    crude_contribution = global_sentiment.get("crude_contribution", 0)
-    if crude_contribution == 0:
-        return base_long, base_short
-
-    # Reverse the crude component for this sector and reclassify
-    base_score    = global_sentiment.get("score", 0)
-    sector_score  = max(-10.0, min(10.0, base_score - 2 * crude_contribution))
+    sector_score = max(-10.0, min(10.0, sector_score))
     _, long_adj, short_adj = _classify_and_adjust(sector_score)
     return long_adj, short_adj
 

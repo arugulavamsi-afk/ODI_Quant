@@ -286,8 +286,8 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                     "entry": _sf(pdo * 1.001), "stop_loss": sl,
                     "target1": _sf(pdo + risk * 2),
                     "target2": _sf(pdo + risk * 3),
-                    "note": f"Opened ₹{pdo} vs prev close ₹{prev} · Watch ORB on gap · SL = gap fill",
-                    "rr": "1:2 if ORB holds",
+                    "note": f"Opened ₹{pdo} vs prev close ₹{prev} · Watch first 15-min range for direction · SL = gap fill",
+                    "rr": "1:2 if opening range holds",
                 })
             elif gap_pct <= -0.8:
                 sl  = _sf(prev)

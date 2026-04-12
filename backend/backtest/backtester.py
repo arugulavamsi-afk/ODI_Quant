@@ -48,7 +48,7 @@ from indicators.volume import get_volume_spike, get_price_volume_alignment, get_
 from indicators.breakout import get_breakout_status, get_closing_strength, get_breakout_score, get_consolidation_breakout
 from signals.signal_engine import generate_long_signal, generate_short_signal
 from scoring.scorer import calculate_long_score, calculate_short_score
-from config import HIGH_PROB_THRESHOLD, BREAKOUT_PERIOD
+from config import HIGH_PROB_THRESHOLD, BREAKOUT_PERIOD, COMMISSION_PCT
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,22 @@ _INTRABAR_NOTE = (
     "The simulation checks SL before target within each bar — conservative for longs, "
     "optimistic for shorts. Actual fill order may differ. "
     "Win rate could be overstated or understated by several percentage points."
+)
+
+# ── Execution model constants ─────────────────────────────────────────────────
+# Gap invalidation: if the next-day open blows through PDH/PDL by more than
+# this buffer, the signal is treated as stale — no fill, trade skipped.
+# This is the most important realism fix: EOD signals have 24-hour lag and
+# breakout stocks routinely gap past their PDH on signal follow-through days.
+_GAP_INVAL_PCT   = 0.01    # 1% — if open > PDH × 1.01, gap invalidated (LONG)
+_ENTRY_SLIP_PCT  = 0.002   # 0.2% — market-order slippage through a live breakout
+_EXIT_SLIP_PCT   = 0.001   # 0.1% — limit-order exit slippage per target
+
+_GAP_INVAL_NOTE = (
+    "Gap-aware execution model: if the next session opens more than 1% beyond "
+    "PDH (LONG) or PDL (SHORT), the signal is treated as gap-invalidated and "
+    "the trade is skipped — no fill. This is more realistic than using next-day "
+    "open directly, which overstates win rates by assuming perfect fill at any price."
 )
 
 
@@ -253,55 +269,108 @@ def run_backtest(symbol: str, df: pd.DataFrame, period_days: int = 504) -> dict:
         if direction is None:
             continue
 
-        # ── Next-day execution ────────────────────────────────────────────
+        # ── Gap-aware next-day execution ──────────────────────────────────
+        # Signal is generated from bar i (yesterday). Execution is bar i+1.
+        # PDH/PDL come from bar i (the signal day's high/low).
+        signal_day = df.iloc[i]
+        pdh        = float(signal_day["High"])
+        pdl        = float(signal_day["Low"])
+
         next_day  = df.iloc[i + 1]
-        entry     = float(next_day["Open"])
+        next_open = float(next_day["Open"])
         day_high  = float(next_day["High"])
         day_low   = float(next_day["Low"])
         day_close = float(next_day["Close"])
 
-        atr = indicators["atr"] or entry * 0.02
+        atr = indicators["atr"] or pdh * 0.02
 
         if direction == "LONG":
-            sl     = entry - atr * 1.5
-            target = entry + atr * 3.0     # 2:1 RR
-            # Conservative: assume SL is checked before target (worst case for long)
+            gap_inval    = pdh * (1 + _GAP_INVAL_PCT)   # 1% above PDH
+            pdh_trigger  = pdh * 1.001                   # PDH + 0.1% confirmation
+
+            # If the stock gaps up past the invalidation level at open, the PDH
+            # trigger was blown through before market opened — setup is stale, skip.
+            if next_open > gap_inval:
+                continue
+
+            # Entry: wait for the PDH trigger to fire. If open is already above
+            # trigger, fill at open (continuation); else fill at trigger level.
+            raw_entry   = max(next_open, pdh_trigger)
+            entry_fill  = round(raw_entry * (1 + _ENTRY_SLIP_PCT), 4)  # 0.2% slip
+
+            sl     = round(pdl * 0.999, 4)                 # PDL - 0.1% buffer
+            target = round(raw_entry + atr * 3.0, 4)       # 2:1 RR from trigger
+
+            actual_risk = max(entry_fill - sl, 0.001)
+
+            # Commission: 0.05% entry + 0.05% exit = 0.1% round trip, in R units
+            comm_cost_r = (entry_fill * 2 * COMMISSION_PCT) / actual_risk
+
+            # Conservative: SL checked before target (worst case for long)
             if day_low <= sl:
-                outcome, pnl_r = "LOSS", -1.0
+                raw_pnl_r = -1.0
+                outcome   = "LOSS"
             elif day_high >= target:
-                outcome, pnl_r = "WIN", 2.0
+                t_fill    = round(target * (1 - _EXIT_SLIP_PCT), 4)
+                raw_pnl_r = (t_fill - entry_fill) / actual_risk
+                outcome   = "WIN"
             else:
-                sl_dist = entry - sl
-                pnl_r   = (day_close - entry) / sl_dist if sl_dist > 0 else 0
-                outcome = "WIN" if pnl_r > 0 else "LOSS"
+                c_fill    = round(day_close * (1 - _EXIT_SLIP_PCT), 4)
+                raw_pnl_r = (c_fill - entry_fill) / actual_risk
+                outcome   = "WIN" if raw_pnl_r > 0 else "LOSS"
+
+            pnl_r = round(raw_pnl_r - comm_cost_r, 3)
+
         else:  # SHORT
-            sl     = entry + atr * 1.5
-            target = entry - atr * 3.0
-            # Conservative: assume SL is checked before target (worst case for short)
+            gap_inval    = pdl * (1 - _GAP_INVAL_PCT)   # 1% below PDL
+            pdl_trigger  = pdl * 0.999                   # PDL - 0.1% confirmation
+
+            if next_open < gap_inval:
+                continue
+
+            raw_entry   = min(next_open, pdl_trigger)
+            entry_fill  = round(raw_entry * (1 - _ENTRY_SLIP_PCT), 4)
+
+            sl     = round(pdh * 1.001, 4)
+            target = round(raw_entry - atr * 3.0, 4)
+
+            actual_risk = max(sl - entry_fill, 0.001)
+
+            comm_cost_r = (entry_fill * 2 * COMMISSION_PCT) / actual_risk
+
             if day_high >= sl:
-                outcome, pnl_r = "LOSS", -1.0
+                raw_pnl_r = -1.0
+                outcome   = "LOSS"
             elif day_low <= target:
-                outcome, pnl_r = "WIN", 2.0
+                t_fill    = round(target * (1 + _EXIT_SLIP_PCT), 4)
+                raw_pnl_r = (entry_fill - t_fill) / actual_risk
+                outcome   = "WIN"
             else:
-                sl_dist = sl - entry
-                pnl_r   = (entry - day_close) / sl_dist if sl_dist > 0 else 0
-                outcome = "WIN" if pnl_r > 0 else "LOSS"
+                c_fill    = round(day_close * (1 + _EXIT_SLIP_PCT), 4)
+                raw_pnl_r = (entry_fill - c_fill) / actual_risk
+                outcome   = "WIN" if raw_pnl_r > 0 else "LOSS"
+
+            pnl_r = round(raw_pnl_r - comm_cost_r, 3)
 
         trades.append({
             "date":           str(df.index[i].date()),
             "direction":      direction,
             "score":          score,
-            "entry":          round(entry, 2),
+            "entry":          round(entry_fill, 2),
             "sl":             round(sl, 2),
             "target":         round(target, 2),
             "outcome":        outcome,
-            "pnl_r":          round(pnl_r, 2),
+            "pnl_r":          pnl_r,
             "signal_quality": signal.get("signal", "N/A") if signal else "N/A",
         })
 
         # Fixed-fractional equity update: 1R = 2% of equity
         equity *= (1 + pnl_r * 0.02)
         equity_curve.append(round(equity, 4))
+
+    # ── Gap invalidation count ───────────────────────────────────────────────
+    # trades list only contains executed trades (gaps skipped via continue).
+    # We don't track skipped count here without restructuring; note it in output.
 
     # ── Data quality assessment ───────────────────────────────────────────────
     tradeable_bars = len(df) - _WARMUP_BARS - 1
@@ -374,8 +443,8 @@ def run_backtest(symbol: str, df: pd.DataFrame, period_days: int = 504) -> dict:
     ci_lo, ci_hi = _wilson_ci(len(wins), total_trades)
 
     # Max drawdown
-    peak = max_dd = 0.0
-    peak = 1.0
+    peak  = 1.0
+    max_dd = 0.0
     for e in equity_curve:
         if e > peak:
             peak = e
@@ -386,29 +455,64 @@ def run_backtest(symbol: str, df: pd.DataFrame, period_days: int = 504) -> dict:
     final_equity = equity_curve[-1] if equity_curve else 1.0
     total_return = (final_equity - 1.0) * 100
 
+    # ── Calmar ratio ──────────────────────────────────────────────────────────
+    # Annualised return / max drawdown. > 1.0 is acceptable; > 2.0 is strong.
+    # Uses compound annual growth rate from the equity curve.
+    if tradeable_bars > 0 and final_equity > 0:
+        cagr_pct = (final_equity ** (252.0 / tradeable_bars) - 1.0) * 100
+    else:
+        cagr_pct = 0.0
+    calmar = round(cagr_pct / max_dd, 3) if max_dd > 0 else None
+
+    # ── Max consecutive losses ────────────────────────────────────────────────
+    # The psychological killer. 5 losers in a row at 1% risk = 5% drawdown and
+    # severe temptation to double-position on the next trade. Know this number.
+    max_consec_losses = 0
+    current_consec    = 0
+    for t in trades:
+        if t["outcome"] == "LOSS":
+            current_consec += 1
+            max_consec_losses = max(max_consec_losses, current_consec)
+        else:
+            current_consec = 0
+
+    # ── Commission-adjusted expectancy ────────────────────────────────────────
+    # Commission is already baked into each trade's pnl_r (deducted at trade time).
+    # The reported expectancy IS commission-adjusted. Label it clearly.
+    commission_note = (
+        f"Commission model: {COMMISSION_PCT*100:.3f}% per leg "
+        f"({COMMISSION_PCT*200:.2f}% round-trip) deducted from each trade's R. "
+        "Expectancy reported is commission-adjusted."
+    )
+
     # Mark all metrics as potentially unreliable when sample is too small.
     metrics_reliable = reliability not in ("INSUFFICIENT",)
 
     return {
-        "symbol":               symbol,
-        "period_days":          period_days,
-        "total_trades":         total_trades,
-        "wins":                 len(wins),
-        "losses":               len(losses),
-        "win_rate":             round(win_rate, 1),
-        "win_rate_ci_95":       [ci_lo, ci_hi],   # 95% Wilson confidence interval
-        "avg_win_r":            round(avg_win_r, 2),
-        "avg_loss_r":           round(avg_loss_r, 2),
-        "avg_rr":               round(avg_rr, 2),
-        "expectancy":           round(expectancy, 3),
-        "profit_factor":        pf,
-        "sharpe_annualised":    sharpe,
-        "max_drawdown_pct":     round(max_dd, 2),
-        "total_return_pct":     round(total_return, 2),
-        "metrics_reliable":     metrics_reliable,
-        "statistical_reliability": reliability,
-        "data_quality":         data_quality,
-        "trades":               trades[-20:],      # last 20 for display
+        "symbol":                   symbol,
+        "period_days":              period_days,
+        "total_trades":             total_trades,
+        "wins":                     len(wins),
+        "losses":                   len(losses),
+        "win_rate":                 round(win_rate, 1),
+        "win_rate_ci_95":           [ci_lo, ci_hi],   # 95% Wilson confidence interval
+        "avg_win_r":                round(avg_win_r, 2),
+        "avg_loss_r":               round(avg_loss_r, 2),
+        "avg_rr":                   round(avg_rr, 2),
+        "expectancy":               round(expectancy, 3),   # commission-adjusted
+        "profit_factor":            pf,
+        "sharpe_annualised":        sharpe,
+        "max_drawdown_pct":         round(max_dd, 2),
+        "cagr_pct":                 round(cagr_pct, 2),
+        "calmar_ratio":             calmar,            # CAGR / max drawdown; >1.0 = viable
+        "max_consecutive_losses":   max_consec_losses, # key psychological/sizing input
+        "total_return_pct":         round(total_return, 2),
+        "metrics_reliable":         metrics_reliable,
+        "statistical_reliability":  reliability,
+        "commission_note":          commission_note,
+        "gap_execution_note":       _GAP_INVAL_NOTE,
+        "data_quality":             data_quality,
+        "trades":                   trades[-20:],      # last 20 for display
     }
 
 
@@ -461,33 +565,38 @@ def run_portfolio_backtest(stock_data: dict, period_days: int = 504) -> dict:
             "unreliable": unreliable_symbols,
         }
 
-    all_win_rates  = [r["win_rate"]         for r in all_results]
-    all_expectancy = [r["expectancy"]        for r in all_results]
-    all_dd         = [r["max_drawdown_pct"]  for r in all_results]
-    all_trades     = [r["total_trades"]      for r in all_results]
-    all_pf         = [r["profit_factor"]     for r in all_results if r["profit_factor"] is not None]
-    all_sharpe     = [r["sharpe_annualised"] for r in all_results if r["sharpe_annualised"] is not None]
+    all_win_rates   = [r["win_rate"]              for r in all_results]
+    all_expectancy  = [r["expectancy"]             for r in all_results]
+    all_dd          = [r["max_drawdown_pct"]       for r in all_results]
+    all_trades      = [r["total_trades"]           for r in all_results]
+    all_pf          = [r["profit_factor"]          for r in all_results if r["profit_factor"] is not None]
+    all_sharpe      = [r["sharpe_annualised"]      for r in all_results if r["sharpe_annualised"] is not None]
+    all_calmar      = [r["calmar_ratio"]           for r in all_results if r.get("calmar_ratio") is not None]
+    all_consec_loss = [r["max_consecutive_losses"] for r in all_results if r.get("max_consecutive_losses") is not None]
 
     total_trades_agg = sum(all_trades)
     agg_reliability  = _reliability_label(total_trades_agg)
 
     return {
-        "period_days":            period_days,
-        "stocks_tested":          len(all_results),
-        "stocks_skipped":         len(skipped_symbols),
-        "stocks_unreliable":      len(unreliable_symbols),
-        "total_trades":           total_trades_agg,
-        "statistical_reliability": agg_reliability,
-        "avg_win_rate":           round(float(np.mean(all_win_rates)), 1),
-        "avg_expectancy":         round(float(np.mean(all_expectancy)), 3),
-        "avg_profit_factor":      round(float(np.mean(all_pf)), 3) if all_pf else None,
-        "avg_sharpe":             round(float(np.mean(all_sharpe)), 3) if all_sharpe else None,
-        "avg_max_drawdown_pct":   round(float(np.mean(all_dd)), 2),
-        "best_stock":             max(all_results, key=lambda x: x["win_rate"])["symbol"],
-        "worst_stock":            min(all_results, key=lambda x: x["win_rate"])["symbol"],
-        "individual_results":     sorted(all_results,
-                                         key=lambda x: x["win_rate"],
-                                         reverse=True)[:10],
-        "skipped":                skipped_symbols,
-        "unreliable":             unreliable_symbols,
+        "period_days":              period_days,
+        "stocks_tested":            len(all_results),
+        "stocks_skipped":           len(skipped_symbols),
+        "stocks_unreliable":        len(unreliable_symbols),
+        "total_trades":             total_trades_agg,
+        "statistical_reliability":  agg_reliability,
+        "avg_win_rate":             round(float(np.mean(all_win_rates)), 1),
+        "avg_expectancy":           round(float(np.mean(all_expectancy)), 3),   # commission-adjusted
+        "avg_profit_factor":        round(float(np.mean(all_pf)), 3) if all_pf else None,
+        "avg_sharpe":               round(float(np.mean(all_sharpe)), 3) if all_sharpe else None,
+        "avg_calmar_ratio":         round(float(np.mean(all_calmar)), 3) if all_calmar else None,
+        "avg_max_drawdown_pct":     round(float(np.mean(all_dd)), 2),
+        "worst_max_consec_losses":  max(all_consec_loss) if all_consec_loss else None,
+        "best_stock":               max(all_results, key=lambda x: x["win_rate"])["symbol"],
+        "worst_stock":              min(all_results, key=lambda x: x["win_rate"])["symbol"],
+        "individual_results":       sorted(all_results,
+                                           key=lambda x: x["win_rate"],
+                                           reverse=True)[:10],
+        "skipped":                  skipped_symbols,
+        "unreliable":               unreliable_symbols,
+        "execution_model":          "gap-aware (PDH/PDL trigger, 1% gap invalidation, 0.2% entry slip, commission-adjusted)",
     }
