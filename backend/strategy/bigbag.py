@@ -31,6 +31,13 @@ import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
+try:
+    from curl_cffi import requests as _cffi_requests
+    def _make_shared_session():
+        return _cffi_requests.Session(impersonate="chrome")
+except ImportError:
+    _make_shared_session = None
+
 logger = logging.getLogger(__name__)
 
 # ─── Curated Quality Universe ─────────────────────────────────────────────────
@@ -278,9 +285,9 @@ def _conviction_tier(score: float, pe: float | None = None) -> tuple:
     return tier, label, color, valuation_flag, valuation_note
 
 
-def _process_bb_stock(sym: str, meta: dict) -> dict | None:
+def _process_bb_stock(sym: str, meta: dict, ticker=None) -> dict | None:
     try:
-        t    = yf.Ticker(sym)
+        t    = ticker or yf.Ticker(sym)
         info = t.info or {}
 
         # Prices
@@ -369,11 +376,27 @@ def run_bigbag(_universe: dict = None) -> dict:
     """Screen quality compounders using EMPIRE framework metrics."""
     try:
         universe = _universe or BB_UNIVERSE
-        logger.info("[BigBag] Screening %d quality candidates…", len(universe))
+        symbols  = list(universe.keys())
+        logger.info("[BigBag] Screening %d quality candidates…", len(symbols))
+
+        # One shared curl_cffi session → one crumb acquisition for all tickers.
+        # Without this, 50 concurrent Ticker() instances each try to get their
+        # own Yahoo crumb, which immediately triggers the rate-limit on cloud IPs.
+        shared_session = _make_shared_session() if _make_shared_session else None
+        if shared_session:
+            logger.info("[BigBag] Using shared curl_cffi session")
+        else:
+            logger.warning("[BigBag] curl_cffi unavailable — each ticker gets its own session")
+
+        all_tickers = yf.Tickers(" ".join(symbols), session=shared_session)
+
         results = []
-        with ThreadPoolExecutor(max_workers=10) as ex:
-            futs = {ex.submit(_process_bb_stock, sym, meta): sym
-                    for sym, meta in universe.items()}
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            def _fetch(sym):
+                ticker = all_tickers.tickers.get(sym.upper())
+                return _process_bb_stock(sym, universe[sym], ticker=ticker)
+
+            futs = {ex.submit(_fetch, sym): sym for sym in symbols}
             for fut in as_completed(futs):
                 r = fut.result()
                 if r is not None:
