@@ -349,6 +349,29 @@ async def get_bigbag():
         raise HTTPException(status_code=500, detail=f"BigBag screen failed: {str(e)}")
 
 
+@app.get("/api/strategy/bigbag/debug")
+async def bigbag_debug():
+    """One-ticker diagnostic — returns raw yfinance result or full error traceback."""
+    import traceback
+    import yfinance as yf
+    try:
+        t = yf.Ticker("TCS.NS")
+        info = t.info or {}
+        return {
+            "ok": True,
+            "keys_returned": len(info),
+            "currentPrice": info.get("currentPrice"),
+            "returnOnEquity": info.get("returnOnEquity"),
+            "trailingPE": info.get("trailingPE"),
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
 @app.get("/api/health")
 async def health_check():
     return {
