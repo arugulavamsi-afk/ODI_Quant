@@ -56,7 +56,7 @@ BB_UNIVERSE = {
     "AXISBANK.NS":    {"name": "Axis Bank",                 "sector": "Private Banks",   "theme": "Financialization",     "fin": True},
     # AMC / Wealth
     "HDFCAMC.NS":     {"name": "HDFC AMC",                  "sector": "AMC/Wealth",      "theme": "Financialization",     "fin": True},
-    "NIPPONLIFE.NS":  {"name": "Nippon Life AMC",           "sector": "AMC/Wealth",      "theme": "Financialization",     "fin": True},
+    "NAM-INDIA.NS":   {"name": "Nippon Life AMC",           "sector": "AMC/Wealth",      "theme": "Financialization",     "fin": True},
     "ANGELONE.NS":    {"name": "Angel One",                 "sector": "Broking",         "theme": "Financialization",     "fin": True},
     # Insurance
     "SBILIFE.NS":     {"name": "SBI Life Insurance",        "sector": "Insurance",       "theme": "Financialization",     "fin": True},
@@ -93,7 +93,7 @@ BB_UNIVERSE = {
     # Specialty Chemicals
     "PIDILITIND.NS":  {"name": "Pidilite Industries",       "sector": "Specialty Chem",  "theme": "Specialty Chem",       "fin": False},
     "AARTIIND.NS":    {"name": "Aarti Industries",          "sector": "Specialty Chem",  "theme": "Specialty Chem",       "fin": False},
-    "CLEANSCIENCE.NS":{"name": "Clean Science & Tech",      "sector": "Specialty Chem",  "theme": "Specialty Chem",       "fin": False},
+    "CLEAN.NS":        {"name": "Clean Science & Tech",      "sector": "Specialty Chem",  "theme": "Specialty Chem",       "fin": False},
     # QSR / Consumer Disc
     "DEVYANI.NS":     {"name": "Devyani International",     "sector": "QSR",             "theme": "Consumer Disc.",       "fin": False},
     "SAPPHIRE.NS":    {"name": "Sapphire Foods",            "sector": "QSR",             "theme": "Consumer Disc.",       "fin": False},
