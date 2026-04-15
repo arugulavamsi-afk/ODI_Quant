@@ -100,14 +100,16 @@ async def root_redirect():
     raise HTTPException(status_code=404, detail=f"Frontend not found at {FRONTEND_DIR}")
 
 
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+
 @app.get("/styles.css", include_in_schema=False)
 async def serve_css():
-    return FileResponse(os.path.join(FRONTEND_DIR, "styles.css"), media_type="text/css")
+    return FileResponse(os.path.join(FRONTEND_DIR, "styles.css"), media_type="text/css", headers=_NO_CACHE)
 
 
 @app.get("/app.js", include_in_schema=False)
 async def serve_js():
-    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"), media_type="application/javascript")
+    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"), media_type="application/javascript", headers=_NO_CACHE)
 
 
 # ─── API Endpoints ────────────────────────────────────────────────────────────

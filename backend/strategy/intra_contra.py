@@ -270,7 +270,11 @@ def _process_stock(sym: str, info: dict) -> dict | None:
         # that all downstream setup conditions use a real-time price level.
         # Also computes: true ORB high/low and cumulative intraday VWAP.
         is_live       = False
-        is_post_market = False   # True after 15:30 IST — setup conditions reverse direction
+        # True when session is over (>= 15:30 IST, weekday) — setup conditions reverse
+        # direction: look for close NEAR PDH/PDL rather than price ABOVE/BELOW PDH/PDL.
+        # Determined by wall clock, not by data staleness.
+        _now_ist      = datetime.now(IST)
+        is_post_market = (_now_ist.weekday() < 5 and _now_ist.time() >= dtime(15, 30))
         live_price    = None
         orb_high      = None
         orb_low       = None
@@ -318,7 +322,6 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                         session_tp = _sf((pdh + pdl + pdc) / 3)
                         gap_pct    = _sf((pdo - prev) / prev * 100) if (prev and pdo) else None
                         chg_pct    = _sf((t_close - prev) / prev * 100) if prev else None
-                        is_post_market = True   # flip setup condition direction
             except Exception:
                 pass  # keep original daily values on any error
 
