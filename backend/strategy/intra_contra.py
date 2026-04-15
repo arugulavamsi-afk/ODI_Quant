@@ -34,10 +34,13 @@ import logging
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timezone, timedelta, time as dtime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
+
+# IST = UTC+5:30 (no external timezone library needed)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # ─── Curated Watchlist ────────────────────────────────────────────────────────
 # 20 high-liquidity Nifty 50 / F&O active stocks
@@ -93,6 +96,93 @@ def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) ->
     pc = close.shift(1)
     tr = pd.concat([high - low, (high - pc).abs(), (low - pc).abs()], axis=1).max(axis=1)
     return tr.ewm(alpha=1/period, adjust=False).mean()
+
+
+# ─── Live / Intraday Helpers ──────────────────────────────────────────────────
+
+def _market_session_info() -> dict:
+    """Returns current NSE market session state based on IST wall-clock time."""
+    now = datetime.now(IST)
+    is_weekday = now.weekday() < 5          # Mon=0 … Fri=4
+    t = now.time()
+    market_open  = dtime(9, 15)
+    market_close = dtime(15, 30)
+    orb_end      = dtime(9, 30)
+    is_open      = is_weekday and market_open <= t <= market_close
+    orb_complete = is_weekday and t >= orb_end
+    elapsed_min  = None
+    if is_open:
+        open_dt = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        elapsed_min = int((now - open_dt).total_seconds() / 60)
+    return {
+        "is_open":            is_open,
+        "orb_complete":       orb_complete,
+        "ist_time":           now.strftime("%H:%M IST"),
+        "ist_date":           now.strftime("%Y-%m-%d"),
+        "session_elapsed_min": elapsed_min,
+    }
+
+
+def _fetch_intraday(sym: str) -> "pd.DataFrame | None":
+    """Fetch today's 5-min OHLCV from yfinance. Returns None on failure."""
+    try:
+        df = yf.Ticker(sym).history(period="1d", interval="5m", auto_adjust=True)
+        if df is None or df.empty:
+            return None
+        df.columns = [c.strip() for c in df.columns]
+        df = df.dropna(subset=["Close", "Volume"])
+        return df if not df.empty else None
+    except Exception:
+        return None
+
+
+def _is_today_data(df: pd.DataFrame) -> bool:
+    """True if the latest row in df is from today (IST calendar date)."""
+    try:
+        ts = df.index[-1]
+        if hasattr(ts, "tzinfo") and ts.tzinfo is not None:
+            d = ts.astimezone(IST).date()
+        else:
+            d = ts.date()
+        return d == datetime.now(IST).date()
+    except Exception:
+        return False
+
+
+def _to_ist_times(df: pd.DataFrame):
+    """Return a list of time objects (IST) for each row in df."""
+    idx = df.index
+    if hasattr(idx[0], "tzinfo") and idx[0].tzinfo is not None:
+        return [ts.astimezone(IST).time() for ts in idx]
+    return [ts.time() for ts in idx]
+
+
+def _compute_orb(df_5m: pd.DataFrame) -> "tuple[float|None, float|None]":
+    """
+    Opening Range = high/low of NSE 9:15–9:29 AM candles (first 15 min).
+    Returns (orb_high, orb_low) or (None, None).
+    """
+    try:
+        times = _to_ist_times(df_5m)
+        mask  = [(dtime(9, 15) <= t < dtime(9, 30)) for t in times]
+        orb   = df_5m[mask]
+        if orb.empty:
+            return None, None
+        return _sf(float(orb["High"].max())), _sf(float(orb["Low"].min()))
+    except Exception:
+        return None, None
+
+
+def _compute_intraday_vwap(df_5m: pd.DataFrame) -> "float | None":
+    """Cumulative session VWAP anchored at today's open (9:15 AM)."""
+    try:
+        vol = df_5m["Volume"]
+        if vol.sum() == 0:
+            return None
+        tp = (df_5m["High"] + df_5m["Low"] + df_5m["Close"]) / 3
+        return _sf(float((tp * vol).cumsum().iloc[-1] / vol.cumsum().iloc[-1]))
+    except Exception:
+        return None
 
 
 # ─── Per-Stock Analysis ───────────────────────────────────────────────────────
@@ -173,6 +263,40 @@ def _process_stock(sym: str, info: dict) -> dict | None:
         qual_atr    = atr_pct is not None and atr_pct >= 1.5
         qual_vol    = avg20v >= 5_000_000          # 50 lakh shares
         qualified   = qual_atr and qual_vol
+
+        # ── Live Intraday Enrichment ───────────────────────────────────────────
+        # Fetch today's 5-min bars. When the market is open (or recently closed
+        # with today's data available), override CMP with the live last price so
+        # that all downstream setup conditions use a real-time price level.
+        # Also computes: true ORB high/low and cumulative intraday VWAP.
+        is_live       = False
+        live_price    = None
+        orb_high      = None
+        orb_low       = None
+        intraday_vwap = None
+        live_volume   = None
+        orb_complete  = False
+
+        df_5m = _fetch_intraday(sym)
+        if df_5m is not None and _is_today_data(df_5m):
+            is_live    = True
+            lp         = _sf(float(df_5m["Close"].iloc[-1]))
+            live_price = lp
+            live_volume = int(df_5m["Volume"].sum())
+            intraday_vwap = _compute_intraday_vwap(df_5m)
+            orb_high, orb_low = _compute_orb(df_5m)
+
+            # Override EOD CMP with live price for all setup detection below
+            if lp:
+                cmp = lp
+                session_tp_dev = _sf((cmp - session_tp) / session_tp * 100) if session_tp else None
+
+            # ORB is complete once any candle at or after 9:30 AM IST is present
+            try:
+                times = _to_ist_times(df_5m)
+                orb_complete = any(t >= dtime(9, 30) for t in times)
+            except Exception:
+                orb_complete = False
 
         # ── Setup Detection ───────────────────────────────────────────────────
         setups = []
@@ -302,9 +426,58 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                     "rr": "1:2 if breakdown holds",
                 })
 
-        # Sort: PDH/PDL level alerts first (level-based, clearest triggers),
+        # ── ORB Setups — live only, generated after ORB window (≥ 9:30 AM) ──────
+        # A true Opening Range Breakout requires live intraday data.
+        # Condition: live CMP has confirmed above/below the 9:15-9:29 range,
+        #            AND price is on the correct side of the intraday VWAP.
+        if is_live and orb_complete and orb_high and orb_low:
+            orb_range = orb_high - orb_low
+            if orb_range > 0.01:
+
+                # ORB Long: live CMP broke and is ABOVE ORB High
+                if (cmp > orb_high and intraday_vwap and cmp > intraday_vwap):
+                    entry = _sf(orb_high * 1.001)
+                    sl    = orb_low
+                    risk  = max(entry - sl, 0.01) if (entry and sl) else orb_range
+                    setups.append({
+                        "setup": "ORB_LONG", "setup_label": "ORB Breakout ↑",
+                        "icon": "🚀",
+                        "window": "9:30–11:00 AM · LIVE confirmed",
+                        "data_note": "LIVE — price confirmed above Opening Range High",
+                        "entry": entry, "stop_loss": sl,
+                        "target1": _sf(entry + risk * 2),
+                        "target2": _sf(entry + risk * 3),
+                        "note": (f"ORB High ₹{orb_high} · ORB Low ₹{orb_low} · "
+                                 f"Range ₹{_sf(orb_range)} · "
+                                 f"Intraday VWAP ₹{intraday_vwap} (price above = bullish) · "
+                                 f"SL at ORB Low · PDH ₹{pdh} next resistance"),
+                        "rr": "1:2 / 1:3",
+                    })
+
+                # ORB Short: live CMP broke and is BELOW ORB Low
+                elif (cmp < orb_low and intraday_vwap and cmp < intraday_vwap):
+                    entry = _sf(orb_low * 0.999)
+                    sl    = orb_high
+                    risk  = max(sl - entry, 0.01) if (entry and sl) else orb_range
+                    setups.append({
+                        "setup": "ORB_SHORT", "setup_label": "ORB Breakdown ↓",
+                        "icon": "📉",
+                        "window": "9:30–11:00 AM · LIVE confirmed",
+                        "data_note": "LIVE — price confirmed below Opening Range Low",
+                        "entry": entry, "stop_loss": sl,
+                        "target1": _sf(entry - risk * 2),
+                        "target2": _sf(entry - risk * 3),
+                        "note": (f"ORB Low ₹{orb_low} · ORB High ₹{orb_high} · "
+                                 f"Range ₹{_sf(orb_range)} · "
+                                 f"Intraday VWAP ₹{intraday_vwap} (price below = bearish) · "
+                                 f"SL at ORB High · PDL ₹{pdl} next support"),
+                        "rr": "1:2 / 1:3",
+                    })
+
+        # Sort: ORB first (live, highest confidence), then PDH/PDL level alerts,
         # then gap plays, then session reversion (timing discipline required)
-        order = ["PDH_BREAKOUT", "PDL_BREAKDOWN", "GAP_UP", "GAP_DOWN",
+        order = ["ORB_LONG", "ORB_SHORT",
+                 "PDH_BREAKOUT", "PDL_BREAKDOWN", "GAP_UP", "GAP_DOWN",
                  "SESSION_REVERSION_LONG", "SESSION_REVERSION_SHORT"]
         setups.sort(key=lambda x: order.index(x["setup"]) if x["setup"] in order else 99)
 
@@ -350,6 +523,14 @@ def _process_stock(sym: str, info: dict) -> dict | None:
             "qualified":        qualified,
             "qual_atr":         qual_atr,
             "qual_vol":         qual_vol,
+            # Live intraday data (populated when market is open / today's 5m data exists)
+            "is_live":          is_live,
+            "live_price":       live_price,
+            "orb_high":         orb_high,
+            "orb_low":          orb_low,
+            "intraday_vwap":    intraday_vwap,
+            "live_volume":      live_volume,
+            "orb_complete":     orb_complete,
             # Setups
             "setups":           setups,
             "setup_count":      len(setups),
@@ -413,6 +594,15 @@ def _market_context() -> dict:
                                   "ELEVATED" if vv and vv <= 22 else "HIGH")
     except Exception as e:
         logger.warning(f"VIX error: {e}")
+    # Market session info (IST wall-clock)
+    session = _market_session_info()
+    ctx.update({
+        "is_market_open":      session["is_open"],
+        "orb_complete":        session["orb_complete"],
+        "ist_time":            session["ist_time"],
+        "ist_date":            session["ist_date"],
+        "session_elapsed_min": session["session_elapsed_min"],
+    })
     return ctx
 
 
@@ -514,16 +704,22 @@ def run_intra_contra(_universe: dict = None) -> dict:
                             if st["setup"] in ("SESSION_REVERSION_LONG", "SESSION_REVERSION_SHORT"))
         gap_plays     = sum(1 for s in results for st in s["setups"]
                             if st["setup"] in ("GAP_UP", "GAP_DOWN"))
+        orb_plays     = sum(1 for s in results for st in s["setups"]
+                            if st["setup"] in ("ORB_LONG", "ORB_SHORT"))
+        live_count    = sum(1 for s in results if s.get("is_live"))
         above_stp     = sum(1 for s in results if s.get("above_session_tp"))
         above_20dvwap = sum(1 for s in results if s.get("above_20d_vwap"))
 
+        now_ist = datetime.now(IST)
         return {
             "status":           "success",
-            "run_date":         datetime.now().strftime("%Y-%m-%d"),
-            "run_time":         datetime.now().strftime("%H:%M:%S"),
+            "run_date":         now_ist.strftime("%Y-%m-%d"),
+            "run_time":         now_ist.strftime("%H:%M:%S IST"),
+            "is_live":          live_count > 0,
             "watchlist_source": watchlist_source,
             "screener_date":    screener_date,
             "market_context":   market_ctx,
+            "market_session":   _market_session_info(),
             "stocks":           results,
             "summary": {
                 "total":            total,
@@ -531,10 +727,12 @@ def run_intra_contra(_universe: dict = None) -> dict:
                 "from_baseline":    total - from_screener,
                 "qualified":        qualified_n,
                 "with_setups":      w_setups,
+                "orb_plays":        orb_plays,
                 "pdh_breakout":     pdh_breakout,
                 "pdl_breakdown":    pdl_breakdown,
                 "session_rev":      sess_rev,
                 "gap_plays":        gap_plays,
+                "live_count":       live_count,
                 "above_session_tp": above_stp,
                 "above_20d_vwap":   above_20dvwap,
             },

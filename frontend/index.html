@@ -437,13 +437,21 @@
       <span class="ic-sub-title">IntraContra <span class="ic-accent">VWAP Momentum</span></span>
       <span class="ic-sub-desc">VWAP Momentum + Institutional Order Flow · 20-stock curated watchlist</span>
     </div>
-    <div style="display:flex;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span id="icLiveBadge" class="ic-live-badge" style="display:none"></span>
+      <span id="icCountdown" class="ic-countdown"></span>
       <span class="last-run" id="icLastRun">–</span>
       <button class="btn-ic-run" id="icRunBtn" onclick="runIntraContra()">
         ⚡ Run Scanner
       </button>
     </div>
   </div>
+
+  <!-- Watchlist source banner -->
+  <div id="icSourceBanner" style="display:none;padding:7px 18px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)"></div>
+
+  <!-- Session / live mode info bar -->
+  <div id="icSessionInfo" style="padding:6px 18px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);display:none"></div>
 
   <!-- Empty state -->
   <div id="icEmpty" class="ic-empty">

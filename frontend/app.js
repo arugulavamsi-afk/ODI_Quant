@@ -480,6 +480,7 @@ document.head.appendChild(style);
 let activePage = 'scanner';
 
 function showPage(page) {
+  const prevPage = activePage;
   activePage = page;
   document.querySelectorAll('.page-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.page === page);
@@ -495,6 +496,10 @@ function showPage(page) {
   document.getElementById('runbookPage').style.display  = page === 'runbook' ? '' : 'none';
   document.getElementById('runBtn').style.display       = isScanner  ? '' : 'none';
   document.getElementById('lastRunTime').style.display  = isScanner  ? '' : 'none';
+
+  // Auto-refresh live mode when on IntraContra page during market hours
+  if (page === 'intra') startIcLiveMode();
+  else if (prevPage === 'intra') stopIcLiveMode();
 }
 
 // ── NIFTY data load & render ──────────────────────────────────────────────
@@ -1349,6 +1354,73 @@ let icSortKey  = 'setup_count';
 let icSortAsc  = false;
 let icExpanded = new Set();
 
+// Live mode state
+let icLiveTimer     = null;   // setTimeout handle for next auto-refresh
+let icCountdownTimer = null;  // setInterval handle for 1-s countdown display
+let icNextRefreshAt  = null;  // epoch ms of next scheduled refresh
+const IC_REFRESH_MS  = 3 * 60 * 1000;   // auto-refresh every 3 min during market hours
+
+// ── IST / NSE market-hours helpers ────────────────────────────────────────────
+function getISTNow() {
+  // Returns a Date representing current wall-clock time in IST (UTC+5:30)
+  const now = new Date();
+  return new Date(now.getTime() + (now.getTimezoneOffset() + 330) * 60 * 1000);
+}
+
+function isNSEOpen() {
+  const ist = getISTNow();
+  const day  = ist.getDay();          // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const mins = ist.getHours() * 60 + ist.getMinutes();
+  return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
+}
+
+// ── Live-mode control ─────────────────────────────────────────────────────────
+function updateIcLiveBadge(isLive) {
+  const el = document.getElementById('icLiveBadge');
+  if (!el) return;
+  if (isLive) {
+    el.innerHTML = '<span class="ic-live-dot"></span>LIVE';
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function updateIcCountdown() {
+  const el = document.getElementById('icCountdown');
+  if (!el || !icNextRefreshAt) { if (el) el.textContent = ''; return; }
+  const secs = Math.max(0, Math.floor((icNextRefreshAt - Date.now()) / 1000));
+  const m = Math.floor(secs / 60), s = secs % 60;
+  el.textContent = `↻ ${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function startIcLiveMode() {
+  stopIcLiveMode();
+  if (!isNSEOpen()) { updateIcLiveBadge(false); return; }
+  updateIcLiveBadge(true);
+
+  function scheduleNext() {
+    icNextRefreshAt = Date.now() + IC_REFRESH_MS;
+    icLiveTimer = setTimeout(() => {
+      runIntraContra(true);  // silent auto-refresh
+      scheduleNext();
+    }, IC_REFRESH_MS);
+  }
+  scheduleNext();
+  icCountdownTimer = setInterval(updateIcCountdown, 1000);
+  updateIcCountdown();
+}
+
+function stopIcLiveMode() {
+  if (icLiveTimer)     { clearTimeout(icLiveTimer);    icLiveTimer = null; }
+  if (icCountdownTimer){ clearInterval(icCountdownTimer); icCountdownTimer = null; }
+  icNextRefreshAt = null;
+  updateIcLiveBadge(false);
+  const el = document.getElementById('icCountdown');
+  if (el) el.textContent = '';
+}
+
 // ── Time Windows Definition ────────────────────────────────────────────────
 const IC_TIME_WINDOWS = [
   { label: 'Pre-Market',   time: '9:00–9:15',   color: '#666',    tip: 'Gap analysis, PDH/PDL prep, news scan' },
@@ -1361,27 +1433,31 @@ const IC_TIME_WINDOWS = [
 ];
 
 // ── Fetch ─────────────────────────────────────────────────────────────────
-async function runIntraContra() {
+// silent=true: called by live-mode timer — no full-screen loader overlay
+async function runIntraContra(silent = false) {
   const btn = document.getElementById('icRunBtn');
   btn.disabled = true;
   btn.classList.add('loading');
-  btn.textContent = '⏳ Scanning…';
-  showLoader('Fetching Nifty VWAP levels…');
+  btn.textContent = silent ? '↻ Refreshing…' : '⏳ Scanning…';
 
-  const msgs = [
-    'Fetching PDH / PDL levels…',
-    'Computing 20-day VWAP proxy…',
-    'Detecting ORB breakout setups…',
-    'Scanning VWAP reversion plays…',
-    'Identifying gap setups…',
-    'Computing ATR & RSI…',
-    'Building weekly pivot levels…',
-    'Ranking by setup priority…',
-  ];
-  let mi = 0;
-  const t = setInterval(() => {
-    document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
-  }, 6000);
+  let t = null;
+  if (!silent) {
+    showLoader('Fetching Nifty VWAP levels…');
+    const msgs = [
+      'Fetching PDH / PDL levels…',
+      'Computing 20-day VWAP proxy…',
+      'Detecting ORB breakout setups…',
+      'Scanning live 5-min intraday bars…',
+      'Computing Opening Range levels…',
+      'Scanning VWAP reversion plays…',
+      'Identifying gap setups…',
+      'Ranking by setup priority…',
+    ];
+    let mi = 0;
+    t = setInterval(() => {
+      document.getElementById('loaderText').textContent = msgs[mi++ % msgs.length];
+    }, 6000);
+  }
 
   try {
     const res = await fetch(`${API}/api/strategy/intra-contra`);
@@ -1391,13 +1467,15 @@ async function runIntraContra() {
     }
     const data = await res.json();
     renderIntraContra(data);
-    showToast('IntraContra scan complete!', 'success');
+    if (!silent) showToast('IntraContra scan complete!', 'success');
+    // On manual scan restart the countdown from now
+    if (!silent && isNSEOpen()) startIcLiveMode();
   } catch (e) {
     showToast(`IntraContra error: ${e.message}`, 'error');
     console.error(e);
   } finally {
-    clearInterval(t);
-    hideLoader();
+    if (t) clearInterval(t);
+    if (!silent) hideLoader();
     btn.disabled = false;
     btn.classList.remove('loading');
     btn.textContent = '⚡ Run Scanner';
@@ -1410,8 +1488,37 @@ function renderIntraContra(data) {
   document.getElementById('icContent').style.display = '';
 
   const ts = data.run_date && data.run_time
-    ? `Last: ${data.run_date} ${data.run_time}` : (data.run_date || '–');
+    ? `${data.run_date} ${data.run_time}` : (data.run_date || '–');
   document.getElementById('icLastRun').textContent = ts;
+
+  // Live badge (header) — mirrors is_live from response
+  updateIcLiveBadge(data.is_live === true);
+
+  // Session info bar
+  const sessEl = document.getElementById('icSessionInfo');
+  const ms = data.market_session || data.market_context || {};
+  if (sessEl) {
+    if (ms.is_market_open || ms.is_open) {
+      const elapsed = ms.session_elapsed_min;
+      const orbDone = ms.orb_complete;
+      const liveCount = (data.summary || {}).live_count ?? 0;
+      sessEl.style.display = '';
+      sessEl.innerHTML = `
+        <span class="ic-live-dot" style="width:6px;height:6px;margin-right:5px"></span>
+        <strong style="color:var(--green)">NSE OPEN</strong>
+        &nbsp;&middot;&nbsp; ${ms.ist_time || ''}
+        ${elapsed != null ? `&nbsp;&middot;&nbsp; ${elapsed} min elapsed` : ''}
+        &nbsp;&middot;&nbsp; ORB: <strong style="color:${orbDone ? 'var(--green)' : '#f59e0b'}">${orbDone ? 'Complete' : 'In progress (9:15–9:30)'}</strong>
+        &nbsp;&middot;&nbsp; ${liveCount} stocks with live 5-min data
+        &nbsp;&middot;&nbsp; <span style="color:var(--text-dim)">Data: ~15-min delay (yfinance free tier)</span>
+      `;
+    } else {
+      sessEl.style.display = '';
+      sessEl.innerHTML = `
+        <span style="color:var(--text-dim)">&#9679; Market CLOSED &nbsp;&middot;&nbsp; ${ms.ist_time || ''} &nbsp;&middot;&nbsp; Showing pre-market analysis (EOD data) — ORB setups appear when market opens</span>
+      `;
+    }
+  }
 
   // Watchlist source banner
   const bannerEl = document.getElementById('icSourceBanner');
@@ -1519,7 +1626,14 @@ function renderIcTimeBar() {
 
 // ── Summary chips ─────────────────────────────────────────────────────────
 function renderIcChips(s) {
+  const orbHtml = (s.orb_plays ?? 0) > 0
+    ? `<div class="ic-chip ic-chip-green" title="Live Opening Range Breakout signals"><span class="ic-chip-num">${s.orb_plays}</span><span class="ic-chip-lbl">ORB Live</span></div>`
+    : '';
+  const liveHtml = (s.live_count ?? 0) > 0
+    ? `<div class="ic-chip ic-chip-green" title="Stocks with live 5-min data"><span class="ic-chip-num">${s.live_count}</span><span class="ic-chip-lbl">Live Data</span></div>`
+    : '';
   document.getElementById('icChips').innerHTML = `
+    ${orbHtml}${liveHtml}
     <div class="ic-chip ic-chip-blue"><span class="ic-chip-num">${s.total ?? 0}</span><span class="ic-chip-lbl">Watchlist</span></div>
     <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.from_screener ?? 0}</span><span class="ic-chip-lbl">From Screener</span></div>
     <div class="ic-chip ic-chip-green"><span class="ic-chip-num">${s.qualified ?? 0}</span><span class="ic-chip-lbl">Qualified</span></div>
@@ -1628,8 +1742,9 @@ function buildIcRow(s) {
     ? `<span style="color:var(--green);font-size:10px">H:${fmt(s.pdh)}</span><br><span style="color:var(--red);font-size:10px">L:${fmt(s.pdl)}</span>`
     : '–';
 
-  // Setup badges
+  // Setup badges — ORB setups are live-only (highest priority colour)
   const setupCols = {
+    ORB_LONG:  'var(--green)', ORB_SHORT: 'var(--red)',
     PDH_BREAKOUT: 'var(--green)', PDL_BREAKDOWN: 'var(--red)',
     SESSION_REVERSION_LONG: '#f59e0b', SESSION_REVERSION_SHORT: '#f59e0b',
     GAP_UP: '#4a9eff', GAP_DOWN: '#a855f7',
@@ -1651,7 +1766,9 @@ function buildIcRow(s) {
       <td class="ic-expand">${icExpanded.has(id) ? '▼' : '▶'}</td>
       <td><strong>${s.symbol}</strong>${aboveSTPDot}${screenerBadge}<br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
       <td><span style="color:var(--text-muted)">${s.sector}</span></td>
-      <td style="font-family:var(--mono)">₹${fmt(s.cmp)}</td>
+      <td style="font-family:var(--mono)">${s.is_live
+        ? `<span class="ic-live-price" title="Live 5-min price">₹${fmt(s.live_price ?? s.cmp)}</span>`
+        : `₹${fmt(s.cmp)}`}</td>
       <td>${chgHtml}</td>
       <td>${vdHtml}</td>
       <td style="color:${atrCol};font-family:var(--mono)">${s.atr_pct != null ? s.atr_pct.toFixed(1) + '%' : '–'}</td>
@@ -1667,9 +1784,20 @@ function buildIcRow(s) {
 }
 
 function buildIcDetail(s) {
+  const liveRows = s.is_live ? `
+    <div class="ic-ema-row" style="background:#22c55e0d;border-left:2px solid var(--green)">
+      <span style="color:var(--green);font-weight:600">Live Price</span>
+      <span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.live_price ?? s.cmp)} <span class="ic-live-dot" style="width:5px;height:5px"></span></span>
+    </div>
+    ${s.intraday_vwap ? `<div class="ic-ema-row"><span style="color:#f59e0b">Intraday VWAP</span><span style="font-family:var(--mono);color:#f59e0b">₹${fmt(s.intraday_vwap)}</span></div>` : ''}
+    ${s.orb_high ? `<div class="ic-ema-row"><span style="color:var(--green)">ORB High</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.orb_high)}</span></div>` : ''}
+    ${s.orb_low  ? `<div class="ic-ema-row"><span style="color:var(--red)">ORB Low</span><span style="font-family:var(--mono);color:var(--red)">₹${fmt(s.orb_low)}</span></div>` : ''}
+  ` : '';
+
   const levelsHtml = `
     <div class="ic-ema-ladder">
-      <div class="ic-ema-row"><span>CMP</span><span style="font-family:var(--mono);color:var(--text)">₹${fmt(s.cmp)}</span></div>
+      ${liveRows}
+      <div class="ic-ema-row"><span>${s.is_live ? 'EOD Close' : 'CMP'}</span><span style="font-family:var(--mono);color:var(--text)">₹${fmt(s.cmp)}</span></div>
       <div class="ic-ema-row"><span>Session TP</span><span style="font-family:var(--mono);color:#f59e0b">₹${fmt(s.session_tp)}${s.session_tp_dev != null ? ` <span style="font-size:10px">(${s.session_tp_dev >= 0 ? '+' : ''}${s.session_tp_dev.toFixed(1)}%)</span>` : ''}</span></div>
       <div class="ic-ema-row"><span>VWAP (20d swing)</span><span style="font-family:var(--mono);color:var(--text-muted)">₹${fmt(s.vwap_20d)}</span></div>
       <div class="ic-ema-row"><span>PDH</span><span style="font-family:var(--mono);color:var(--green)">₹${fmt(s.pdh)}</span></div>
@@ -1704,12 +1832,15 @@ function buildIcDetail(s) {
     const riskPct  = risk && st.entry ? (Math.abs(risk) / st.entry * 100).toFixed(1) : null;
     const pos1L    = risk && Math.abs(risk) > 0 ? Math.floor(1000000 * 0.01 / Math.abs(risk)) : null;
 
+    const isLiveSetup = st.setup === 'ORB_LONG' || st.setup === 'ORB_SHORT';
     return `
-      <div class="ic-setup-card" style="border-top-color:${col}">
+      <div class="ic-setup-card" style="border-top-color:${col}${isLiveSetup ? ';box-shadow:0 0 0 1px ' + col + '33' : ''}">
         <div class="ic-setup-hdr">
           <span class="ic-setup-name" style="color:${col}">${st.icon} ${st.setup_label}</span>
+          ${isLiveSetup ? '<span class="ic-live-badge" style="font-size:9px;padding:1px 5px"><span class="ic-live-dot" style="width:5px;height:5px"></span>LIVE</span>' : ''}
           <span class="ic-setup-wr" style="color:var(--text-muted);font-size:10px">⏰ ${st.window}</span>
         </div>
+        ${st.data_note ? `<div style="font-size:10px;color:${isLiveSetup ? 'var(--green)' : 'var(--text-dim)'};margin-bottom:4px">📡 ${st.data_note}</div>` : ''}
         <div class="ic-setup-note">${st.note || ''}</div>
         <div class="ic-levels-grid">
           <div class="ic-lvl ic-entry"><span class="ic-lvl-lbl">Entry</span><span class="ic-lvl-val">₹${fmt(st.entry)}</span></div>
