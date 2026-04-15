@@ -286,6 +286,40 @@ def _process_stock(sym: str, info: dict) -> dict | None:
             intraday_vwap = _compute_intraday_vwap(df_5m)
             orb_high, orb_low = _compute_orb(df_5m)
 
+            # ── Stale daily data correction ───────────────────────────────────
+            # yfinance daily (period="6mo") lags 1-2 h after NSE close.
+            # Post-market: if daily iloc[-1] is from before today, reconstruct
+            # today's OHLCV from 5-min bars so PDH/PDL/PDC reflect today's
+            # COMPLETED session — the correct "previous day" for tomorrow's setups.
+            # During the session we intentionally keep yesterday's PDH/PDL as
+            # the reference (intraday breakout logic depends on prior-day levels).
+            try:
+                daily_last = df.index[-1]
+                if hasattr(daily_last, "tzinfo") and daily_last.tzinfo is not None:
+                    daily_last_date = daily_last.astimezone(IST).date()
+                else:
+                    daily_last_date = daily_last.date()
+                today_ist   = datetime.now(IST).date()
+                session_over = datetime.now(IST).time() >= dtime(15, 30)
+
+                if daily_last_date < today_ist and session_over:
+                    t_high  = _sf(float(df_5m["High"].max()))
+                    t_low   = _sf(float(df_5m["Low"].min()))
+                    t_close = _sf(float(df_5m["Close"].iloc[-1]))
+                    t_open  = _sf(float(df_5m["Open"].iloc[0]))
+                    if t_high and t_low and t_close:
+                        prev    = pdc           # yesterday's close → becomes prev
+                        pdh     = t_high        # today's high  → becomes PDH for tomorrow
+                        pdl     = t_low         # today's low   → becomes PDL for tomorrow
+                        pdc     = t_close       # today's close → becomes PDC for tomorrow
+                        if t_open:
+                            pdo = t_open
+                        session_tp = _sf((pdh + pdl + pdc) / 3)
+                        gap_pct    = _sf((pdo - prev) / prev * 100) if (prev and pdo) else None
+                        chg_pct    = _sf((t_close - prev) / prev * 100) if prev else None
+            except Exception:
+                pass  # keep original daily values on any error
+
             # Override EOD CMP with live price for all setup detection below
             if lp:
                 cmp = lp
