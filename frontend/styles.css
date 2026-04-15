@@ -1694,6 +1694,49 @@ body {
 }
 .ic-cap-input:focus { color: var(--orange); }
 
+/* ── Section dividers (Live / Tomorrow / Radar) ───────────────────────── */
+.ic-section-block {
+  margin-bottom: 4px;
+}
+.ic-section-divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 5px 5px 0 0;
+  cursor: pointer;
+  user-select: none;
+  margin-top: 12px;
+  border-left: 3px solid transparent;
+}
+.ic-section-divider:hover { background: var(--card-bg2); }
+.ic-sec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ic-sec-count {
+  display: inline-block;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 2px;
+}
+.ic-sec-sub {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+.ic-section-block .ic-table-wrap {
+  border-radius: 0 0 5px 5px;
+  border-top: none;
+}
+
 /* Per-setup position sizing table */
 .ic-sizing-block {
   margin-top: 8px;

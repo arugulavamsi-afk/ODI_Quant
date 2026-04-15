@@ -1744,14 +1744,108 @@ function applyIcFilters() {
   renderIcTable(f);
 }
 
+// ── Sections ──────────────────────────────────────────────────────────────
+const icSectionCollapsed = new Set(); // tracks which sections are collapsed
+
+function toggleIcSection(type) {
+  const body = document.getElementById(`ic-sec-body-${type}`);
+  const chev = document.getElementById(`ic-sec-chev-${type}`);
+  if (!body) return;
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  if (chev) chev.textContent = collapsed ? '▼' : '▶';
+  if (collapsed) icSectionCollapsed.delete(type);
+  else           icSectionCollapsed.add(type);
+}
+
+function buildIcSection(type, title, subtitle, stocks, startCollapsed = false) {
+  if (!stocks.length) return '';
+
+  const colors = {
+    live:      { accent: 'var(--green)',  dot: '#22c55e' },
+    tomorrow:  { accent: 'var(--orange)', dot: '#f59e0b' },
+    radar:     { accent: 'var(--text-muted)', dot: '#555' },
+  };
+  const c = colors[type] || colors.radar;
+  const collapsed = startCollapsed || icSectionCollapsed.has(type);
+  const chevron = collapsed ? '▶' : '▼';
+
+  const rows = stocks.map(s => buildIcRow(s)).join('');
+
+  return `
+    <div class="ic-section-block" id="ic-sec-${type}">
+      <div class="ic-section-divider" onclick="toggleIcSection('${type}')" style="border-left:3px solid ${c.dot}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="ic-sec-dot" style="background:${c.dot}"></span>
+          <span style="color:${c.accent};font-weight:700;font-size:13px">${title}</span>
+          <span class="ic-sec-count">${stocks.length}</span>
+          ${subtitle ? `<span class="ic-sec-sub">${subtitle}</span>` : ''}
+        </div>
+        <span id="ic-sec-chev-${type}" style="color:var(--text-dim);font-size:11px">${chevron}</span>
+      </div>
+      <div id="ic-sec-body-${type}" style="${collapsed ? 'display:none' : ''}">
+        <div class="ic-table-wrap">
+          <table class="ic-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th onclick="sortIc('symbol')">Symbol &#8597;</th>
+                <th>Sector</th>
+                <th onclick="sortIc('cmp')">CMP &#8597;</th>
+                <th onclick="sortIc('chg_pct')">Chg% &#8597;</th>
+                <th>STP Dev &#8597;</th>
+                <th onclick="sortIc('atr_pct')">ATR% &#8597;</th>
+                <th onclick="sortIc('avg_vol_l')">Vol (L) &#8597;</th>
+                <th onclick="sortIc('rsi_14')">RSI &#8597;</th>
+                <th>PDH / PDL</th>
+                <th>Setups</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ── Table ─────────────────────────────────────────────────────────────────
 function renderIcTable(stocks) {
-  const tbody = document.getElementById('icTableBody');
+  const container = document.getElementById('icSections');
+  if (!container) return;
+
   if (!stocks.length) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-muted)">No stocks match this filter.</td></tr>`;
+    container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">No stocks match this filter.</div>`;
     return;
   }
-  tbody.innerHTML = stocks.map(s => buildIcRow(s)).join('');
+
+  // Split into three groups
+  const liveStocks     = stocks.filter(s => s.has_setup && !s.is_post_market);
+  const tomorrowStocks = stocks.filter(s => s.has_setup && s.is_post_market);
+  const radarStocks    = stocks.filter(s => !s.has_setup);
+
+  let html = '';
+
+  if (liveStocks.length) {
+    html += buildIcSection('live', '🟢 Live Setups', 'Active during this session', liveStocks, false);
+  }
+
+  if (tomorrowStocks.length) {
+    html += buildIcSection('tomorrow', '📅 Tomorrow\'s Watchlist', 'Pre-market prep · trade tomorrow at open', tomorrowStocks, false);
+  }
+
+  if (!liveStocks.length && !tomorrowStocks.length) {
+    html += `<div style="padding:20px 4px;color:var(--text-dim);font-size:12px">
+      No active setups yet. ${icStocks.some(s=>s.is_live) ? 'Market is open — setups appear once price triggers are hit.' : 'Run scanner after 15:30 IST for tomorrow\'s prep, or during session for live signals.'}
+    </div>`;
+  }
+
+  if (radarStocks.length) {
+    html += buildIcSection('radar', '👁 On Radar', 'Qualified · monitoring for trigger', radarStocks, true);
+  }
+
+  container.innerHTML = html;
+
+  // Restore expanded rows
   icExpanded.forEach(id => {
     const dr = document.getElementById(`ic-det-${id}`);
     const mr = document.getElementById(`ic-row-${id}`);

@@ -509,27 +509,8 @@
       <!-- Summary chips -->
       <div class="ic-chips" id="icChips"><!-- JS --></div>
 
-      <!-- Table -->
-      <div class="ic-table-wrap">
-        <table class="ic-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th onclick="sortIc('symbol')">Symbol &#8597;</th>
-              <th>Sector</th>
-              <th onclick="sortIc('cmp')">CMP &#8597;</th>
-              <th onclick="sortIc('chg_pct')">Chg% &#8597;</th>
-              <th onclick="sortIc('vwap_dev_pct')">VWAP Dev &#8597;</th>
-              <th onclick="sortIc('atr_pct')">ATR% &#8597;</th>
-              <th onclick="sortIc('avg_vol_l')">Vol (L) &#8597;</th>
-              <th onclick="sortIc('rsi_14')">RSI &#8597;</th>
-              <th>PDH / PDL</th>
-              <th>Setups</th>
-            </tr>
-          </thead>
-          <tbody id="icTableBody"><!-- JS --></tbody>
-        </table>
-      </div>
+      <!-- Sections (Live / Tomorrow / Radar) — rendered by JS -->
+      <div id="icSections"><!-- JS --></div>
     </div>
 
     <!-- Risk System & Position Sizing -->
