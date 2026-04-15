@@ -1842,29 +1842,27 @@ function buildIcDetail(s) {
     const risk     = st.entry && st.stop_loss
       ? (isShort ? st.stop_loss - st.entry : st.entry - st.stop_loss) : null;
     const riskPct  = risk && st.entry ? (Math.abs(risk) / st.entry * 100).toFixed(1) : null;
-    const cap          = icGlobalCapital || 1000000;
-    const LEVERAGE     = 5;                                   // NSE MIS intraday leverage
-    const buyingPower  = cap * LEVERAGE;
-    const maxByLev     = st.entry ? Math.floor(buyingPower / st.entry) : Infinity;
-    const riskAmt      = risk && Math.abs(risk) > 0 ? Math.abs(risk) : null;
-    const sizingHtml   = riskAmt ? (() => {
+    const cap         = icGlobalCapital || 1000000;
+    const LEVERAGE    = 5;                          // NSE MIS — margin blocked = posVal / 5
+    const riskAmt     = risk && Math.abs(risk) > 0 ? Math.abs(risk) : null;
+    // Formula: qty = (Capital × Risk%) / (Entry − SL)
+    // Leverage does NOT change qty — it only reduces margin required to 1/5th of position value.
+    const sizingHtml  = riskAmt ? (() => {
       const tiers = [
         { label: 'Normal 1%',    pct: 0.01,  col: '#4a9eff' },
         { label: 'High Conv 2%', pct: 0.02,  col: 'var(--orange)' },
         { label: 'Reduced 0.5%', pct: 0.005, col: 'var(--text-dim)' },
       ];
       return tiers.map(t => {
-        const qtyByRisk    = Math.floor(cap * t.pct / riskAmt);
-        const qty          = Math.min(qtyByRisk, maxByLev);
-        const atRisk       = Math.round(cap * t.pct);        // risk on actual capital
-        const posVal       = Math.round(qty * (st.entry || 0));
-        const marginBlocked = Math.round(posVal / LEVERAGE); // what leaves your account
-        const levLimited   = qty < qtyByRisk;                // leverage was the binding cap
+        const atRisk       = Math.round(cap * t.pct);                   // ₹ at risk
+        const qty          = Math.floor(atRisk / riskAmt);              // shares
+        const posVal       = Math.round(qty * (st.entry || 0));         // full exposure
+        const marginBlocked = Math.round(posVal / LEVERAGE);            // actual margin out
         return `<div class="ic-sizing-row">
           <span style="color:${t.col};min-width:100px">${t.label}</span>
-          <span class="ic-sizing-qty">${qty.toLocaleString('en-IN')} sh${levLimited ? ' <span style="color:#f59e0b;font-size:9px" title="Leverage cap hit">⚡lev cap</span>' : ''}</span>
+          <span class="ic-sizing-qty">${qty.toLocaleString('en-IN')} sh</span>
           <span class="ic-sizing-risk">₹${atRisk.toLocaleString('en-IN')} risk</span>
-          <span class="ic-sizing-margin" title="Margin blocked from your account">₹${marginBlocked.toLocaleString('en-IN')} margin</span>
+          <span class="ic-sizing-margin" title="Margin blocked (pos value ÷ 5)">₹${marginBlocked.toLocaleString('en-IN')} margin</span>
           <span class="ic-sizing-pos" style="color:var(--text-dim)">₹${posVal.toLocaleString('en-IN')} pos</span>
         </div>`;
       }).join('');
@@ -1891,7 +1889,7 @@ function buildIcDetail(s) {
         </div>
         ${sizingHtml ? `
         <div class="ic-sizing-block">
-          <div class="ic-sizing-hdr">Position Sizing &nbsp;·&nbsp; ₹${(cap/100000).toFixed(cap%100000===0?0:1)}L capital &nbsp;·&nbsp; <span style="color:var(--orange)">5× MIS → ₹${(buyingPower/100000).toFixed(buyingPower%100000===0?0:1)}L buying power</span></div>
+          <div class="ic-sizing-hdr">Position Sizing &nbsp;·&nbsp; ₹${(cap/100000).toFixed(cap%100000===0?0:1)}L capital &nbsp;·&nbsp; <span style="color:var(--text-dim)">margin = pos value ÷ 5 (MIS)</span></div>
           ${sizingHtml}
         </div>` : ''}
       </div>`;
@@ -1932,26 +1930,22 @@ function calcIcPosition() {
     return;
   }
 
-  const LEVERAGE     = 5;
-  const buyingPower  = capital * LEVERAGE;
-  const maxLoss      = capital * (riskTier / 100);
-  const riskPer      = entry - stop;
-  const qtyByRisk    = Math.floor(maxLoss / riskPer);
-  const qtyByLev     = Math.floor(buyingPower / entry);
-  const shares       = Math.min(qtyByRisk, qtyByLev);
-  const levLimited   = shares < qtyByRisk;
-  const posVal       = shares * entry;
-  const marginBlocked = posVal / LEVERAGE;
-  const t1           = entry + riskPer * 2;
-  const t2           = entry + riskPer * 3;
+  const LEVERAGE      = 5;
+  // qty = (Capital × Risk%) / (Entry − SL)  ← leverage doesn't change qty
+  const atRisk        = capital * (riskTier / 100);
+  const riskPer       = entry - stop;
+  const shares        = Math.floor(atRisk / riskPer);
+  const posVal        = shares * entry;
+  const marginBlocked = posVal / LEVERAGE;            // actual margin out of account
+  const t1            = entry + riskPer * 2;
+  const t2            = entry + riskPer * 3;
 
   el.innerHTML = `
-    <div class="ic-calc-row"><span>Buying Power (5× MIS)</span><strong style="color:var(--orange)">₹${buyingPower.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
-    <div class="ic-calc-row"><span>Capital at Risk</span><strong style="color:var(--red)">₹${maxLoss.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
+    <div class="ic-calc-row"><span>Capital at Risk (${riskTier}%)</span><strong style="color:var(--red)">₹${atRisk.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
     <div class="ic-calc-row"><span>Risk Per Share</span><strong>₹${riskPer.toFixed(2)}</strong></div>
-    <div class="ic-calc-row"><span>Position Size</span><strong style="color:#f59e0b">${shares.toLocaleString('en-IN')} shares${levLimited ? ' <span style="color:#f59e0b;font-size:10px">(leverage cap)</span>' : ''}</strong></div>
+    <div class="ic-calc-row"><span>Position Size</span><strong style="color:#f59e0b">${shares.toLocaleString('en-IN')} shares</strong></div>
     <div class="ic-calc-row"><span>Position Value</span><strong>₹${posVal.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
-    <div class="ic-calc-row"><span>Margin Blocked</span><strong style="color:var(--text-muted)">₹${marginBlocked.toLocaleString('en-IN',{maximumFractionDigits:0})} (from your capital)</strong></div>
+    <div class="ic-calc-row"><span>Margin Blocked (5× MIS)</span><strong style="color:var(--orange)">₹${marginBlocked.toLocaleString('en-IN',{maximumFractionDigits:0})}</strong></div>
     <hr style="border-color:var(--border);margin:8px 0">
     <div class="ic-calc-row"><span>T1 @ 1:2 R:R</span><strong style="color:var(--green)">₹${t1.toFixed(2)}</strong></div>
     <div class="ic-calc-row"><span>T2 @ 1:3 R:R</span><strong style="color:var(--green)">₹${t2.toFixed(2)}</strong></div>
