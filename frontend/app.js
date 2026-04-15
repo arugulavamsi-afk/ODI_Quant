@@ -1773,6 +1773,25 @@ function buildIcRow(s) {
         return `<span class="ic-setup-badge" style="background:${c}22;color:${c};border:1px solid ${c}44">${st.icon} ${st.setup_label}</span>`;
       }).join('');
 
+  // Compact sizing hint visible in the table row (no expand needed)
+  const cap = icGlobalCapital || 1000000;
+  let rowRisk = null;
+  if (s.setups?.length) {
+    const st0 = s.setups[0];
+    const isShort0 = st0.setup.includes('SHORT') || st0.setup === 'GAP_DOWN';
+    const r = st0.entry && st0.stop_loss
+      ? (isShort0 ? st0.stop_loss - st0.entry : st0.entry - st0.stop_loss) : null;
+    if (r && r > 0) rowRisk = r;
+  }
+  if (!rowRisk && s.atr_14 > 0) rowRisk = s.atr_14;
+  const rowSizingHtml = rowRisk
+    ? `<div style="margin-top:4px;font-size:9px;font-family:var(--mono);color:var(--text-dim)">
+        <span style="color:#4a9eff" title="1% risk · ${rowRisk.toFixed(2)} risk/sh">1%→${Math.floor(cap*0.01/rowRisk).toLocaleString('en-IN')}sh</span>
+        &nbsp;·&nbsp;
+        <span style="color:var(--orange)" title="2% risk · ${rowRisk.toFixed(2)} risk/sh">2%→${Math.floor(cap*0.02/rowRisk).toLocaleString('en-IN')}sh</span>
+      </div>`
+    : '';
+
   return `
     <tr id="${rowId}" class="ic-stock-row ${s.has_setup ? 'ic-has-setup' : ''}" onclick="toggleIcRow('${id}')">
       <td class="ic-expand">${icExpanded.has(id) ? '▼' : '▶'}</td>
@@ -1787,7 +1806,7 @@ function buildIcRow(s) {
       <td style="color:${volCol};font-family:var(--mono)">${s.avg_vol_l != null ? s.avg_vol_l.toFixed(0) + 'L' : '–'}</td>
       <td style="color:${rsiCol};font-family:var(--mono)">${s.rsi_14 != null ? s.rsi_14.toFixed(1) : '–'}</td>
       <td style="font-size:10px">${pdhpdl}</td>
-      <td class="ic-setups-cell">${setupsHtml}</td>
+      <td class="ic-setups-cell">${setupsHtml}${rowSizingHtml}</td>
     </tr>
     <tr id="${detId}" class="ic-detail-row" style="display:none">
       <td colspan="11" class="ic-detail-cell">${buildIcDetail(s)}</td>
@@ -1825,9 +1844,46 @@ function buildIcDetail(s) {
     </div>`;
 
   if (!s.setups?.length) {
-    return `<div class="ic-detail-wrap">${levelsHtml}<div style="padding:14px;color:var(--text-dim)">${
-      s.qualified ? 'Stock qualified — waiting for price trigger near PDH/PDL.' : 'Below ATR or volume threshold.'
-    }</div></div>`;
+    const cap2     = icGlobalCapital || 1000000;
+    const LEVERAGE = 5;
+    const riskRef  = s.atr_14;   // ATR(14) as default risk/share
+    const entryRef = s.live_price ?? s.cmp;
+    const defaultSizing = riskRef && riskRef > 0 && entryRef ? (() => {
+      const tiers = [
+        { label: 'Normal 1%',    pct: 0.01,  col: '#4a9eff' },
+        { label: 'High Conv 2%', pct: 0.02,  col: 'var(--orange)' },
+        { label: 'Reduced 0.5%', pct: 0.005, col: 'var(--text-dim)' },
+      ];
+      const rows = tiers.map(t => {
+        const atRisk = Math.round(cap2 * t.pct);
+        const qty    = Math.floor(atRisk / riskRef);
+        const posVal = Math.round(qty * entryRef);
+        const margin = Math.round(posVal / LEVERAGE);
+        return `<div class="ic-sizing-row">
+          <span style="color:${t.col};min-width:100px">${t.label}</span>
+          <span class="ic-sizing-qty">${qty.toLocaleString('en-IN')} sh</span>
+          <span class="ic-sizing-risk">₹${atRisk.toLocaleString('en-IN')} risk</span>
+          <span class="ic-sizing-margin">₹${margin.toLocaleString('en-IN')} margin</span>
+          <span class="ic-sizing-pos" style="color:var(--text-dim)">₹${posVal.toLocaleString('en-IN')} pos</span>
+        </div>`;
+      }).join('');
+      return `<div class="ic-sizing-block" style="margin-top:10px">
+        <div class="ic-sizing-hdr">
+          Quick Sizing &nbsp;·&nbsp; ₹${(cap2/100000).toFixed(cap2%100000===0?0:1)}L capital
+          &nbsp;·&nbsp; ATR(14) ₹${fmt(riskRef)} as risk/share
+          &nbsp;·&nbsp; margin = pos ÷ 5 (MIS)
+        </div>
+        ${rows}
+      </div>`;
+    })() : '';
+    return `<div class="ic-detail-wrap">${levelsHtml}
+      <div style="padding:14px;flex:1">
+        <div style="color:var(--text-dim);margin-bottom:${defaultSizing ? '12px' : '0'}">
+          ${s.qualified ? 'Qualified — waiting for price trigger near PDH/PDL.' : 'Below ATR or volume threshold.'}
+        </div>
+        ${defaultSizing}
+      </div>
+    </div>`;
   }
 
   const setupCols = {
