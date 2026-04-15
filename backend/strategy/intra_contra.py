@@ -270,6 +270,7 @@ def _process_stock(sym: str, info: dict) -> dict | None:
         # that all downstream setup conditions use a real-time price level.
         # Also computes: true ORB high/low and cumulative intraday VWAP.
         is_live       = False
+        is_post_market = False   # True after 15:30 IST — setup conditions reverse direction
         live_price    = None
         orb_high      = None
         orb_low       = None
@@ -317,6 +318,7 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                         session_tp = _sf((pdh + pdl + pdc) / 3)
                         gap_pct    = _sf((pdo - prev) / prev * 100) if (prev and pdo) else None
                         chg_pct    = _sf((t_close - prev) / prev * 100) if prev else None
+                        is_post_market = True   # flip setup condition direction
             except Exception:
                 pass  # keep original daily values on any error
 
@@ -337,56 +339,81 @@ def _process_stock(sym: str, info: dict) -> dict | None:
 
         if pdh and pdl and cmp:
 
-            # PDH Breakout: CMP closed within 2% above PDH — bullish continuation setup.
-            # This is a pre-market alert, NOT a live ORB. A true ORB requires intraday
-            # 1-min/5-min data (NSE opens 9:15 AM) to define the opening range correctly.
-            # Using PDH as a proxy is reasonable for EOD prep but the trader must confirm:
-            #   (a) the opening range on the live session holds above PDH, and
-            #   (b) opening volume is strong before entering.
+            # PDH Breakout setup.
+            # INTRADAY:    live CMP is 0–2% ABOVE yesterday's PDH → live breakout in progress.
+            # POST-MARKET: today's close is 0–2% BELOW today's PDH → strong close near highs;
+            #              watch for tomorrow's opening breakout above today's PDH.
+            # Note: post-market the condition reverses because close ≤ high by definition —
+            #       "closed within 2% of the high" means (pdh − cmp)/pdh ≤ 2%, not cmp > pdh.
             # Filter: swing bias bullish (CMP above 20D VWAP) + 9 EMA aligned.
-            # SL: 0.5% below PDH — intraday noise buffer. 20D VWAP NOT used as SL.
-            if 0 <= (cmp - pdh) / pdh * 100 <= 2.0 and vwap_20d and cmp > vwap_20d and e9 and cmp >= e9:
+            # SL: 0.5% below PDH — intraday noise buffer.
+            _pdh_cond = (0 <= (pdh - cmp) / pdh * 100 <= 2.0) if is_post_market \
+                   else (0 <= (cmp - pdh) / pdh * 100 <= 2.0)
+            if _pdh_cond and vwap_20d and cmp > vwap_20d and e9 and cmp >= e9:
                 entry = _sf(pdh * 1.002)
-                sl    = _sf(pdh * 0.995)           # 0.5% below PDH — intraday noise buffer
+                sl    = _sf(pdh * 0.995)
                 risk  = max((entry - sl), 0.01) if (entry and sl) else 1
                 stp_note = f"Session TP ₹{session_tp}" if session_tp else ""
+                win  = "Tomorrow open 9:15 AM+ · watch for breakout above PDH" if is_post_market \
+                       else "Live confirm at open · NSE 9:15 AM+"
+                note = (f"Closed within {_sf((pdh-cmp)/pdh*100)}% of today's PDH ₹{pdh} · "
+                        f"Strong close near highs · SL just below PDH · "
+                        f"20D VWAP ₹{vwap_20d} (swing bias: bullish) · {stp_note} · 9 EMA aligned · "
+                        f"Watch tomorrow open: if price holds above PDH + vol surge → enter") \
+                       if is_post_market else \
+                       (f"Trading within 2% of PDH ₹{pdh} · SL just below PDH · "
+                        f"20D VWAP ₹{vwap_20d} (swing bias: bullish) · "
+                        f"{stp_note} · 9 EMA aligned · "
+                        f"Confirm live: opening range holding above PDH + vol surge")
                 setups.append({
                     "setup": "PDH_BREAKOUT", "setup_label": "PDH Breakout",
                     "icon": "🟢",
-                    "window": "Live confirm at open · NSE 9:15 AM+",
-                    "data_note": "EOD alert — verify opening range and volume in live session before entry",
+                    "window": win,
+                    "data_note": "Pre-market prep for tomorrow — verify opening range + volume at open" if is_post_market
+                                 else "EOD alert — verify opening range and volume in live session before entry",
                     "entry": entry, "stop_loss": sl,
                     "target1": _sf(entry + risk * 2),
                     "target2": _sf(entry + risk * 3),
-                    "note": (f"Closed within 2% of PDH ₹{pdh} · SL just below PDH · "
-                             f"20D VWAP ₹{vwap_20d} (swing bias: bullish) · "
-                             f"{stp_note} · 9 EMA aligned · "
-                             f"Confirm live: opening range holding above PDH + vol surge"),
+                    "note": note,
                     "rr": "1:2 / 1:3",
                 })
 
-            # PDL Breakdown: CMP closed within 2% below PDL — bearish continuation setup.
-            # Same data limitation as above — EOD proxy only.
-            # Trader must confirm the live opening range is holding below PDL at open.
+            # PDL Breakdown setup.
+            # INTRADAY:    live CMP is 0–2% BELOW yesterday's PDL → live breakdown in progress.
+            # POST-MARKET: today's close is 0–2% ABOVE today's PDL → weak close near lows;
+            #              watch for tomorrow's opening breakdown below today's PDL.
+            # Same logic reversal as PDH: close ≥ low always, so post-market checks
+            # (cmp − pdl)/pdl ≤ 2% instead of (pdl − cmp)/pdl ≥ 0.
             # Filter: swing bias bearish (CMP below 20D VWAP) + 9 EMA below.
-            # SL: 0.5% above PDL. 20D VWAP NOT used as SL.
-            if 0 <= (pdl - cmp) / pdl * 100 <= 2.0 and vwap_20d and cmp < vwap_20d and e9 and cmp <= e9:
+            # SL: 0.5% above PDL.
+            _pdl_cond = (0 <= (cmp - pdl) / pdl * 100 <= 2.0) if is_post_market \
+                   else (0 <= (pdl - cmp) / pdl * 100 <= 2.0)
+            if _pdl_cond and vwap_20d and cmp < vwap_20d and e9 and cmp <= e9:
                 entry = _sf(pdl * 0.998)
-                sl    = _sf(pdl * 1.005)           # 0.5% above PDL — intraday noise buffer
+                sl    = _sf(pdl * 1.005)
                 risk  = max((sl - entry), 0.01) if (entry and sl) else 1
                 stp_note = f"Session TP ₹{session_tp}" if session_tp else ""
+                win  = "Tomorrow open 9:15 AM+ · watch for breakdown below PDL" if is_post_market \
+                       else "Live confirm at open · NSE 9:15 AM+"
+                note = (f"Closed within {_sf((cmp-pdl)/pdl*100)}% of today's PDL ₹{pdl} · "
+                        f"Weak close near lows · SL just above PDL · "
+                        f"20D VWAP ₹{vwap_20d} (swing bias: bearish) · {stp_note} · 9 EMA below · "
+                        f"Watch tomorrow open: if price breaks below PDL + vol surge → enter short") \
+                       if is_post_market else \
+                       (f"Trading within 2% of PDL ₹{pdl} · SL just above PDL · "
+                        f"20D VWAP ₹{vwap_20d} (swing bias: bearish) · "
+                        f"{stp_note} · 9 EMA below · "
+                        f"Confirm live: opening range holding below PDL + vol surge")
                 setups.append({
                     "setup": "PDL_BREAKDOWN", "setup_label": "PDL Breakdown",
                     "icon": "🔴",
-                    "window": "Live confirm at open · NSE 9:15 AM+",
-                    "data_note": "EOD alert — verify opening range and volume in live session before entry",
+                    "window": win,
+                    "data_note": "Pre-market prep for tomorrow — verify opening range + volume at open" if is_post_market
+                                 else "EOD alert — verify opening range and volume in live session before entry",
                     "entry": entry, "stop_loss": sl,
                     "target1": _sf(entry - risk * 2),
                     "target2": _sf(entry - risk * 3),
-                    "note": (f"Closed within 2% of PDL ₹{pdl} · SL just above PDL · "
-                             f"20D VWAP ₹{vwap_20d} (swing bias: bearish) · "
-                             f"{stp_note} · 9 EMA below · "
-                             f"Confirm live: opening range holding below PDL + vol surge"),
+                    "note": note,
                     "rr": "1:2 / 1:3",
                 })
 
@@ -405,13 +432,14 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                 risk = max(cmp - sl, 0.01) if sl else 1
                 setups.append({
                     "setup": "SESSION_REVERSION_LONG", "setup_label": "Session TP Reversion ↑",
-                    "icon": "↩️", "window": "9:30–11:30 AM only",
+                    "icon": "↩️",
+                    "window": "Tomorrow 9:30–11:30 AM" if is_post_market else "9:30–11:30 AM only",
                     "entry": cmp, "stop_loss": sl,
                     "target1": session_tp,
                     "target2": _sf(session_tp + abs(session_tp_dev / 100 * session_tp) * 0.3),
                     "note": (f"{abs(session_tp_dev):.1f}% below Session TP ₹{session_tp} · "
-                             f"RSI {rsi_val:.0f} oversold · Fade back to prior session anchor · "
-                             f"Exit by 11:30 AM regardless"),
+                             f"RSI {rsi_val:.0f} oversold · Closed in lower range today · "
+                             f"{'Watch for bounce to Session TP at tomorrow open · Exit by 11:30 AM' if is_post_market else 'Fade back to prior session anchor · Exit by 11:30 AM regardless'}"),
                     "rr": "Session TP target",
                 })
 
@@ -423,13 +451,14 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                 risk = max(sl - cmp, 0.01) if sl else 1
                 setups.append({
                     "setup": "SESSION_REVERSION_SHORT", "setup_label": "Session TP Reversion ↓",
-                    "icon": "↪️", "window": "9:30–11:30 AM only",
+                    "icon": "↪️",
+                    "window": "Tomorrow 9:30–11:30 AM" if is_post_market else "9:30–11:30 AM only",
                     "entry": cmp, "stop_loss": sl,
                     "target1": session_tp,
                     "target2": _sf(session_tp - abs(session_tp_dev / 100 * session_tp) * 0.3),
                     "note": (f"{session_tp_dev:.1f}% above Session TP ₹{session_tp} · "
-                             f"RSI {rsi_val:.0f} overbought · Fade back to prior session anchor · "
-                             f"Exit by 11:30 AM regardless"),
+                             f"RSI {rsi_val:.0f} overbought · Closed in upper range today · "
+                             f"{'Watch for fade to Session TP at tomorrow open · Exit by 11:30 AM' if is_post_market else 'Fade back to prior session anchor · Exit by 11:30 AM regardless'}"),
                     "rr": "Session TP target",
                 })
 
@@ -559,6 +588,7 @@ def _process_stock(sym: str, info: dict) -> dict | None:
             "qual_vol":         qual_vol,
             # Live intraday data (populated when market is open / today's 5m data exists)
             "is_live":          is_live,
+            "is_post_market":   is_post_market,
             "live_price":       live_price,
             "orb_high":         orb_high,
             "orb_low":          orb_low,
