@@ -1667,6 +1667,62 @@ body {
 .ic-accent  { color: var(--orange); }
 .ic-sub-desc { font-size: 11px; color: var(--text-muted); }
 
+/* Capital input in sub-header */
+.ic-cap-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--card-bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+.ic-cap-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ic-cap-input {
+  width: 100px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ic-cap-input:focus { color: var(--orange); }
+
+/* Per-setup position sizing table */
+.ic-sizing-block {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-radius: 5px;
+  border: 1px solid var(--border);
+}
+.ic-sizing-hdr {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+.ic-sizing-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ic-sizing-row:last-child { border-bottom: none; }
+.ic-sizing-qty  { font-family: var(--mono); font-weight: 700; color: var(--text); min-width: 65px; }
+.ic-sizing-risk { font-family: var(--mono); color: var(--red);  min-width: 85px; }
+.ic-sizing-pos  { font-family: var(--mono); }
+
 /* Live-mode indicators */
 .ic-live-badge {
   display: inline-flex;

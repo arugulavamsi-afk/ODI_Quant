@@ -440,6 +440,13 @@
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span id="icLiveBadge" class="ic-live-badge" style="display:none"></span>
       <span id="icCountdown" class="ic-countdown"></span>
+      <div class="ic-cap-wrap">
+        <label class="ic-cap-label">Capital &#8377;</label>
+        <input type="number" id="icGlobalCapital" class="ic-cap-input"
+               value="1000000" min="0" step="100000"
+               oninput="onIcCapitalChange()"
+               title="Trading capital — drives position sizing on all setup cards"/>
+      </div>
       <span class="last-run" id="icLastRun">–</span>
       <button class="btn-ic-run" id="icRunBtn" onclick="runIntraContra()">
         ⚡ Run Scanner
@@ -568,7 +575,7 @@
           <div class="ic-card-title">Position Size Calculator</div>
           <div class="ic-calc-fields">
             <div class="ic-field"><label>Total Capital (&#8377;)</label>
-              <input type="number" id="icCapital" value="1000000" oninput="calcIcPosition()"/></div>
+              <input type="number" id="icCapital" value="1000000" oninput="calcIcPosition()" title="Synced with the capital field in the page header"/></div>
             <div class="ic-field"><label>Entry Price (&#8377;)</label>
               <input type="number" id="icEntry" placeholder="e.g. 800" oninput="calcIcPosition()"/></div>
             <div class="ic-field"><label>Stop Loss (&#8377;)</label>

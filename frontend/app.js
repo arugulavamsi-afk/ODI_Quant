@@ -1348,11 +1348,23 @@ function calcPosition() {
    INTRACONTRA — 3M MOMENTUM SWING SYSTEM
    ══════════════════════════════════════════════════════════════════════════ */
 
-let icStocks   = [];
-let icFilter   = 'ALL';
-let icSortKey  = 'setup_count';
-let icSortAsc  = false;
-let icExpanded = new Set();
+let icStocks        = [];
+let icFilter        = 'ALL';
+let icSortKey       = 'setup_count';
+let icSortAsc       = false;
+let icExpanded      = new Set();
+let icGlobalCapital = 1000000;   // default ₹10L — user-editable from the sub-header
+
+function onIcCapitalChange() {
+  const v = parseFloat(document.getElementById('icGlobalCapital').value) || 0;
+  icGlobalCapital = v;
+  // Keep the Risk Engine calculator in sync
+  const calcEl = document.getElementById('icCapital');
+  if (calcEl && parseFloat(calcEl.value) !== v) calcEl.value = v || '';
+  calcIcPosition();
+  // Re-render the table so every expanded setup card shows updated position sizes
+  applyIcFilters();
+}
 
 // Live mode state
 let icLiveTimer     = null;   // setTimeout handle for next auto-refresh
@@ -1830,7 +1842,26 @@ function buildIcDetail(s) {
     const risk     = st.entry && st.stop_loss
       ? (isShort ? st.stop_loss - st.entry : st.entry - st.stop_loss) : null;
     const riskPct  = risk && st.entry ? (Math.abs(risk) / st.entry * 100).toFixed(1) : null;
-    const pos1L    = risk && Math.abs(risk) > 0 ? Math.floor(1000000 * 0.01 / Math.abs(risk)) : null;
+    const cap      = icGlobalCapital || 1000000;
+    const riskAmt  = risk && Math.abs(risk) > 0 ? Math.abs(risk) : null;
+    const sizingHtml = riskAmt ? (() => {
+      const tiers = [
+        { label: 'Normal 1%',    pct: 0.01,  col: '#4a9eff' },
+        { label: 'High Conv 2%', pct: 0.02,  col: 'var(--orange)' },
+        { label: 'Reduced 0.5%', pct: 0.005, col: 'var(--text-dim)' },
+      ];
+      return tiers.map(t => {
+        const qty    = Math.floor(cap * t.pct / riskAmt);
+        const atRisk = Math.round(cap * t.pct);
+        const posVal = Math.round(qty * (st.entry || 0));
+        return `<div class="ic-sizing-row">
+          <span style="color:${t.col};min-width:100px">${t.label}</span>
+          <span class="ic-sizing-qty">${qty.toLocaleString('en-IN')} sh</span>
+          <span class="ic-sizing-risk">₹${atRisk.toLocaleString('en-IN')} risk</span>
+          <span class="ic-sizing-pos" style="color:var(--text-dim)">₹${posVal.toLocaleString('en-IN')} pos</span>
+        </div>`;
+      }).join('');
+    })() : null;
 
     const isLiveSetup = st.setup === 'ORB_LONG' || st.setup === 'ORB_SHORT';
     return `
@@ -1850,8 +1881,12 @@ function buildIcDetail(s) {
         </div>
         <div class="ic-setup-ftr">
           <span>R:R — ${st.rr}</span>
-          ${pos1L ? `<span>Qty @ 1% risk / ₹10L: <strong>${pos1L.toLocaleString('en-IN')}</strong></span>` : ''}
         </div>
+        ${sizingHtml ? `
+        <div class="ic-sizing-block">
+          <div class="ic-sizing-hdr">Position Sizing · ₹${(cap/100000).toFixed(cap % 100000 === 0 ? 0 : 1)}L capital</div>
+          ${sizingHtml}
+        </div>` : ''}
       </div>`;
   }).join('');
 
@@ -1872,7 +1907,14 @@ function toggleIcRow(id) {
 
 // ── Position size calculator (2-tier risk) ───────────────────────────────
 function calcIcPosition() {
-  const capital  = parseFloat(document.getElementById('icCapital').value) || 0;
+  const capEl   = document.getElementById('icCapital');
+  const capital = parseFloat(capEl?.value) || icGlobalCapital;
+  // Sync back to global and sub-header input if the user typed here
+  if (capEl && parseFloat(capEl.value) > 0) {
+    icGlobalCapital = parseFloat(capEl.value);
+    const hdr = document.getElementById('icGlobalCapital');
+    if (hdr && parseFloat(hdr.value) !== icGlobalCapital) hdr.value = icGlobalCapital;
+  }
   const entry    = parseFloat(document.getElementById('icEntry').value)   || 0;
   const stop     = parseFloat(document.getElementById('icStop').value)    || 0;
   const riskTier = parseFloat(document.getElementById('icRiskTier').value) || 1;
