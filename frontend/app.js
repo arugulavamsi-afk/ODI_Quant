@@ -1387,6 +1387,34 @@ function isNSEOpen() {
   return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
 }
 
+function getSetupsForDate(istDateStr, isMarketOpen) {
+  // istDateStr: "YYYY-MM-DD" from backend (IST date of the run)
+  // Returns a human-readable label for which trading session these setups apply to.
+  //   - During market hours (open): setups are for TODAY's live session
+  //   - Before market open (same day, < 9:15): setups are for TODAY's upcoming session
+  //   - After market close (> 15:30) or weekend: setups are for the NEXT trading day
+  const ist = getISTNow();
+  const mins = ist.getHours() * 60 + ist.getMinutes();
+  const day  = ist.getDay();
+  const afterClose = mins > 15 * 60 + 30;
+  const isWeekend  = day === 0 || day === 6;
+
+  // Parse the IST date from the backend response
+  let d = istDateStr ? new Date(istDateStr + 'T00:00:00') : new Date(ist);
+
+  if (isMarketOpen) {
+    // Live session — setups are for today
+  } else if (afterClose || isWeekend) {
+    // Advance to the next weekday
+    do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  }
+  // else: before open on a weekday — setups are for today
+
+  return d.toLocaleDateString('en-IN', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+  });
+}
+
 // ── Live-mode control ─────────────────────────────────────────────────────────
 function updateIcLiveBadge(isLive) {
   const el = document.getElementById('icLiveBadge');
@@ -1501,18 +1529,27 @@ function renderIntraContra(data) {
 
   const ts = data.run_date && data.run_time
     ? `${data.run_date} ${data.run_time}` : (data.run_date || '–');
-  document.getElementById('icLastRun').textContent = ts;
+  document.getElementById('icLastRun').textContent = `Run: ${ts}`;
 
   // Live badge (header) — mirrors is_live from response
   updateIcLiveBadge(data.is_live === true);
 
+  // "Setups for" date label
+  const ms = data.market_session || data.market_context || {};
+  const isOpen = ms.is_market_open || ms.is_open || false;
+  const setupsForDate = getSetupsForDate(ms.ist_date || data.run_date, isOpen);
+  const setupsForEl = document.getElementById('icSetupsFor');
+  if (setupsForEl) {
+    setupsForEl.textContent = `Setups for: ${setupsForDate}`;
+    setupsForEl.style.color = isOpen ? 'var(--green)' : 'var(--orange)';
+  }
+
   // Session info bar
   const sessEl = document.getElementById('icSessionInfo');
-  const ms = data.market_session || data.market_context || {};
   if (sessEl) {
-    if (ms.is_market_open || ms.is_open) {
-      const elapsed = ms.session_elapsed_min;
-      const orbDone = ms.orb_complete;
+    if (isOpen) {
+      const elapsed   = ms.session_elapsed_min;
+      const orbDone   = ms.orb_complete;
       const liveCount = (data.summary || {}).live_count ?? 0;
       sessEl.style.display = '';
       sessEl.innerHTML = `
@@ -1527,7 +1564,11 @@ function renderIntraContra(data) {
     } else {
       sessEl.style.display = '';
       sessEl.innerHTML = `
-        <span style="color:var(--text-dim)">&#9679; Market CLOSED &nbsp;&middot;&nbsp; ${ms.ist_time || ''} &nbsp;&middot;&nbsp; Showing pre-market analysis (EOD data) — ORB setups appear when market opens</span>
+        <span style="color:var(--text-dim)">&#9679; Market CLOSED &nbsp;&middot;&nbsp; ${ms.ist_time || ''}</span>
+        &nbsp;&middot;&nbsp;
+        <strong style="color:var(--orange)">Pre-market prep for ${setupsForDate}</strong>
+        &nbsp;&middot;&nbsp;
+        <span style="color:var(--text-dim)">ORB setups go live after 9:30 AM tomorrow</span>
       `;
     }
   }
