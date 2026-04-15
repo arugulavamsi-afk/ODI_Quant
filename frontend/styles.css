@@ -1719,9 +1719,10 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .ic-sizing-row:last-child { border-bottom: none; }
-.ic-sizing-qty  { font-family: var(--mono); font-weight: 700; color: var(--text); min-width: 65px; }
-.ic-sizing-risk { font-family: var(--mono); color: var(--red);  min-width: 85px; }
-.ic-sizing-pos  { font-family: var(--mono); }
+.ic-sizing-qty    { font-family: var(--mono); font-weight: 700; color: var(--text); min-width: 65px; }
+.ic-sizing-risk   { font-family: var(--mono); color: var(--red);  min-width: 90px; }
+.ic-sizing-margin { font-family: var(--mono); color: var(--orange); min-width: 105px; }
+.ic-sizing-pos    { font-family: var(--mono); }
 
 /* Live-mode indicators */
 .ic-live-badge {
