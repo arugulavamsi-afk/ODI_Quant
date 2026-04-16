@@ -1391,17 +1391,35 @@
       <span class="rb-section-icon">⚡</span>
       <div>
         <div class="rb-section-title">Page 4: IntraContra</div>
-        <div class="rb-section-sub">Intraday level-based setups on 20 high-liquidity F&amp;O stocks</div>
+        <div class="rb-section-sub">Live intraday setups + next-day watchlist on 20 high-liquidity F&amp;O stocks</div>
       </div>
     </div>
 
-    <div class="rb-strategy-pill">STRATEGY: PDH/PDL Level Breakouts + Session TP Mean Reversion | UNIVERSE: 20 curated F&O names | TIMEFRAME: Intraday (same day)</div>
+    <div class="rb-strategy-pill">STRATEGY: ORB Breakout + PDH/PDL Levels + Session TP Mean Reversion | UNIVERSE: 20 curated F&O names + Screener picks | TIMEFRAME: Intraday (same day)</div>
 
-    <p class="rb-para">IntraContra is a <strong>pre-market preparation tool</strong> for intraday traders. It analyzes 20 of India's most liquid Nifty stocks every evening and tells you exactly which levels to watch the next morning, what setups to expect, and how to size your positions.</p>
+    <p class="rb-para">IntraContra operates in <strong>two distinct modes</strong> depending on when you run it. During NSE market hours it becomes a live scanner — pulling real 5-min intraday bars, computing the Opening Range, and generating confirmed breakout signals in real time. After 3:30 PM it switches to tomorrow's prep mode, using today's completed session data to surface stocks worth watching at the next open. The page auto-refreshes every 3 minutes while the market is open.</p>
+
+    <div class="rb-callout rb-callout-blue">
+      <div class="rb-callout-icon">💡</div>
+      <div><strong>"Setups for" date label</strong> — The badge in the header always tells you which session the current setups apply to. During market hours it shows today. After 3:30 PM (or on weekends) it advances to the next trading day. Never second-guess which session you're prepping for.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Two Sections — How to Read the Page</div>
+
+    <div class="rb-concept-grid">
+      <div class="rb-concept-card" style="border-left:3px solid var(--green)">
+        <div class="rb-concept-name" style="color:var(--green)">🟢 Live Setups</div>
+        <div class="rb-concept-body">Visible only during NSE hours (9:15 AM – 3:30 PM). These are setups where today's live price has already confirmed a trigger — ORB breakouts, live PDH breaks, live Session TP deviations. <strong>These are actionable now.</strong> The scanner refreshes automatically every 3 minutes so the list updates as price moves.</div>
+      </div>
+      <div class="rb-concept-card" style="border-left:3px solid var(--orange)">
+        <div class="rb-concept-name" style="color:var(--orange)">📅 Tomorrow's Watchlist</div>
+        <div class="rb-concept-body">Visible after 3:30 PM. Uses today's completed session (H/L/C) as the reference. Shows stocks whose closing price was within 2% of today's high (PDH Breakout candidate) or low (PDL Breakdown candidate). <strong>These are not entries yet</strong> — they're your pre-market homework. Confirm at tomorrow's open with volume before executing.</div>
+      </div>
+    </div>
 
     <div class="rb-callout rb-callout-yellow">
       <div class="rb-callout-icon">⚠️</div>
-      <div><strong>Important:</strong> IntraContra generates EOD-based alerts — not live signals. The setups shown are levels to watch at market open. You must confirm with live price action and volume before entering. These are pre-market homework assignments, not automated buy/sell orders.</div>
+      <div><strong>Data source:</strong> Live 5-min bars are fetched from yfinance (free tier, ~15-min delay). The system uses these to detect ORB levels and override the price with the latest available quote. Daily data updates within 1–2 hours of market close — the stale-data correction rebuilds today's PDH/PDL from 5-min bars if yfinance's daily history hasn't caught up yet.</div>
     </div>
 
     <div class="rb-section-title rb-mt">Key Concepts You Must Know</div>
@@ -1409,87 +1427,146 @@
     <div class="rb-concept-grid">
       <div class="rb-concept-card">
         <div class="rb-concept-name">PDH / PDL</div>
-        <div class="rb-concept-body"><strong>Previous Day High / Previous Day Low.</strong> The most important intraday reference levels. Institutional algorithms are programmed to defend these levels. A clean break above PDH with volume = bullish. A break below PDL with volume = bearish. These levels are where the most reliable intraday moves happen.</div>
+        <div class="rb-concept-body"><strong>Previous Day High / Previous Day Low.</strong> After 3:30 PM these become today's high and low — the reference levels for tomorrow's trade. A clean break above PDH with volume tomorrow = bullish. Below PDL = bearish. Institutional algorithms cluster orders at these levels.</div>
+      </div>
+      <div class="rb-concept-card">
+        <div class="rb-concept-name">Opening Range (ORB)</div>
+        <div class="rb-concept-body"><strong>High and low of the first 15 candles (9:15–9:29 AM).</strong> The opening range is defined by real 5-min data — not PDH/PDL. An ORB breakout is a live, intraday-only signal that fires only after 9:30 AM when the range is locked in and price confirms above/below it with VWAP support. Highest-confidence setup in the system.</div>
+      </div>
+      <div class="rb-concept-card">
+        <div class="rb-concept-name">Intraday VWAP</div>
+        <div class="rb-concept-body"><strong>Cumulative VWAP anchored at 9:15 AM each session.</strong> Computed from 5-min bars. Used to confirm ORB direction: ORB long only fires if live price is also above intraday VWAP (institutional buyers in control). ORB short only fires if below. This filter eliminates false breakouts on low-volume opens.</div>
       </div>
       <div class="rb-concept-card">
         <div class="rb-concept-name">Session TP (Typical Price)</div>
-        <div class="rb-concept-body"><strong>(PDH + PDL + Close) ÷ 3.</strong> This is the prior session's "fair value" — the average price around which the previous day's volume was concentrated. When price deviates more than 1.5% from this level early in the day, there's a statistical tendency to revert back toward it. This is your mean-reversion anchor.</div>
+        <div class="rb-concept-body"><strong>(PDH + PDL + PDC) ÷ 3.</strong> The prior session's "fair value" — where the previous day's volume was centred. When live price deviates 1.5%+ from this anchor early in the session (and RSI confirms), a reversion back toward it is statistically probable. Only valid 9:30–11:30 AM.</div>
       </div>
       <div class="rb-concept-card">
         <div class="rb-concept-name">20D Rolling VWAP</div>
-        <div class="rb-concept-body"><strong>Volume-Weighted Average Price over 20 days.</strong> This tells you the swing trend: above 20D VWAP = bullish multi-day regime, below = bearish. Used only for directional bias — not as an intraday entry level (it moves too slowly for that).</div>
+        <div class="rb-concept-body"><strong>Multi-session swing trend reference.</strong> Above 20D VWAP = bullish regime → favour long setups. Below = bearish → favour shorts. Used only as a directional bias filter — not as an intraday entry or exit level (resets too slowly for that).</div>
       </div>
       <div class="rb-concept-card">
         <div class="rb-concept-name">ATR (Average True Range)</div>
-        <div class="rb-concept-body">The stock's average daily move over 14 days. A stock with 1.5% ATR typically moves ₹15 on a ₹1,000 stock per day. For qualification, the system requires ATR ≥ 1.5% — if the stock doesn't move enough, there's no opportunity to profit intraday.</div>
+        <div class="rb-concept-body">Average daily range over 14 days. Required ≥ 1.5% for a stock to qualify. If ATR is too low the stock won't move enough for intraday profit after costs. ATR also drives default position sizing when no specific entry/SL is set.</div>
       </div>
     </div>
 
-    <div class="rb-section-title rb-mt">The 5 Intraday Setups</div>
+    <div class="rb-section-title rb-mt">All 6 Setups — What Triggers Each</div>
 
     <div class="rb-setup-list">
-      <div class="rb-setup-card" style="border-left:3px solid var(--green)">
-        <div class="rb-setup-name" style="color:var(--green)">🟢 PDH Breakout (Bullish Continuation)</div>
-        <div class="rb-setup-trigger"><strong>Trigger:</strong> Yesterday's close was within 0–2% above PDH. Swing bias is bullish (above 20D VWAP). 9 EMA aligned upward.</div>
-        <div class="rb-setup-action"><strong>Action:</strong> Watch for price to break and hold above PDH at open with above-average volume. Entry just above PDH (PDH × 1.002). Stop-loss 0.5% below PDH. Targets: 2×ATR and 3×ATR.</div>
-        <div class="rb-setup-why"><strong>Why it works:</strong> PDH acts as a magnet. Traders who bought yesterday at the high are break-even — any move above is profit for them, and new buyers push the momentum. Institutional algorithms run at PDH levels.</div>
+      <div class="rb-setup-card" style="border-left:3px solid #22c55e">
+        <div class="rb-setup-name" style="color:#22c55e">🚀 ORB Breakout ↑ (Live Only)</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Live price has broken and closed above the Opening Range High (9:15–9:29 AM high) AND live price is above intraday VWAP. Fires only after 9:30 AM when the ORB window is locked.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Enter long just above ORB High. Stop-loss at ORB Low (full range as risk). Targets: 2× and 3× the ORB range. Time window: 9:30–11:00 AM only.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> The opening range is where the market finds its early consensus. A confirmed break above it — backed by VWAP (institutional buying above fair value) — is the highest-confidence intraday signal. It's the only setup that uses true live price confirmation, not pre-market guesswork.</div>
       </div>
 
       <div class="rb-setup-card" style="border-left:3px solid var(--red)">
-        <div class="rb-setup-name" style="color:var(--red)">🔴 PDL Breakdown (Bearish Continuation)</div>
-        <div class="rb-setup-trigger"><strong>Trigger:</strong> Yesterday's close was within 0–2% below PDL. Swing bias is bearish (below 20D VWAP). 9 EMA pointing down.</div>
-        <div class="rb-setup-action"><strong>Action:</strong> Watch for price to break and hold below PDL at open with volume. Short entry just below PDL. Stop-loss 0.5% above PDL.</div>
-        <div class="rb-setup-why"><strong>Why it works:</strong> Mirror of PDH. Yesterday's low is where sellers took control. Breaking below with volume signals that sellers are dominating and the move continues down.</div>
+        <div class="rb-setup-name" style="color:var(--red)">📉 ORB Breakdown ↓ (Live Only)</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Live price has broken below the Opening Range Low AND live price is below intraday VWAP. Fires only after 9:30 AM.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Short just below ORB Low. Stop-loss at ORB High. Targets: 2× and 3× the ORB range down. Time window: 9:30–11:00 AM only.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Mirror of ORB Long. Bears controlling price below VWAP from the open is a strong institutional distribution signal. The ORB low acts as a confirmed support failure level.</div>
       </div>
 
-      <div class="rb-setup-card" style="border-left:3px solid var(--blue)">
-        <div class="rb-setup-name" style="color:var(--blue)">↩️ Session TP Reversion — Long (Mean Reversion)</div>
-        <div class="rb-setup-trigger"><strong>Trigger:</strong> Price is 1.5%+ BELOW Session TP AND RSI is below 38 (oversold). Only valid 9:30 AM – 11:30 AM.</div>
-        <div class="rb-setup-action"><strong>Action:</strong> Buy at current price. Stop-loss below 3-day swing low. Target is the Session TP level (your mean-reversion anchor).</div>
-        <div class="rb-setup-why"><strong>Why it works:</strong> In the early session, price tends to mean-revert toward the prior day's fair value. If the stock has been beaten down 1.5%+ from that anchor and RSI shows capitulation, a bounce back toward the anchor is highly probable. The window closes by 11:30 AM — after that, the market has found a new direction.</div>
+      <div class="rb-setup-card" style="border-left:3px solid var(--green)">
+        <div class="rb-setup-name" style="color:var(--green)">🟢 PDH Breakout</div>
+        <div class="rb-setup-trigger">
+          <strong>During session:</strong> Live price is 0–2% above yesterday's PDH. Swing bias bullish (above 20D VWAP). 9 EMA aligned up.<br>
+          <strong>Post-market (tomorrow's prep):</strong> Today's close is within 2% BELOW today's high — stock closed near its highs, showing strength. Same VWAP and EMA filters apply.
+        </div>
+        <div class="rb-setup-action"><strong>Action (tomorrow):</strong> Watch for price to open above today's PDH with volume surge. Enter just above PDH. Stop-loss 0.5% below PDH. Targets: 2× and 3× ATR.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> A strong close near the day's high signals buyers in control. Tomorrow, if the stock opens above that high with volume, trapped shorts and new buyers both push price higher. PDH = magnetic resistance that becomes support once broken.</div>
       </div>
 
-      <div class="rb-setup-card" style="border-left:3px solid var(--gold)">
-        <div class="rb-setup-name" style="color:var(--gold)">↪️ Session TP Reversion — Short (Mean Reversion)</div>
-        <div class="rb-setup-trigger"><strong>Trigger:</strong> Price is 1.5%+ ABOVE Session TP AND RSI is above 62. Only valid 9:30 AM – 11:30 AM.</div>
-        <div class="rb-setup-action"><strong>Action:</strong> Short at current price. Stop-loss above 3-day swing high. Target is the Session TP level.</div>
-        <div class="rb-setup-why"><strong>Why it works:</strong> Same principle as above, reversed. Morning euphoria often overshoots the prior day's anchor. When RSI confirms overextension, the reversion is reliable within the morning window.</div>
+      <div class="rb-setup-card" style="border-left:3px solid var(--red)">
+        <div class="rb-setup-name" style="color:var(--red)">🔴 PDL Breakdown</div>
+        <div class="rb-setup-trigger">
+          <strong>During session:</strong> Live price is 0–2% below yesterday's PDL. Swing bias bearish (below 20D VWAP). 9 EMA pointing down.<br>
+          <strong>Post-market (tomorrow's prep):</strong> Today's close is within 2% ABOVE today's low — stock closed near its lows, showing weakness.
+        </div>
+        <div class="rb-setup-action"><strong>Action (tomorrow):</strong> Watch for a break below today's PDL at open with volume. Short just below PDL. Stop-loss 0.5% above PDL. Targets: 2× and 3× ATR down.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Weak close near the day's low means sellers were in control into the close. Tomorrow's open below PDL confirms continuation. PDL = support level that becomes resistance once broken.</div>
       </div>
 
-      <div class="rb-setup-card" style="border-left:3px solid var(--text-muted)">
-        <div class="rb-setup-name">⬆️⬇️ Gap Plays</div>
-        <div class="rb-setup-trigger"><strong>Trigger:</strong> Stock gapped up/down by 0.8%+ from previous close. First 15 minutes: observe only.</div>
-        <div class="rb-setup-action"><strong>Action:</strong> After 9:30 AM, if the gap is holding (stock stays above gap-open), trade in the gap direction. If gap starts filling (stock reverting to previous close), fade it.</div>
-        <div class="rb-setup-why"><strong>Why it works:</strong> Gaps create reference levels. Gaps that hold (don't fill) attract momentum traders. Gaps that fail (fill back) attract mean-reversion traders. Both are tradeable — you just need to wait to see which scenario unfolds.</div>
+      <div class="rb-setup-card" style="border-left:3px solid #f59e0b">
+        <div class="rb-setup-name" style="color:#f59e0b">↩️ Session TP Reversion — Long</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Price is 1.5%+ BELOW Session TP AND RSI below 38. Valid 9:30–11:30 AM (or watch for tomorrow morning if flagged post-market).</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Long at current price. Stop-loss below the 3-day swing low. Target: Session TP (mean-reversion anchor). Exit by 11:30 AM regardless.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> The Session TP is where institutional volume was concentrated the prior day. Early-session deviations of 1.5%+ tend to snap back as algorithmic mean-reversion kicks in. RSI below 38 confirms capitulation — buyers who can absorb the selling are stepping in.</div>
+      </div>
+
+      <div class="rb-setup-card" style="border-left:3px solid #f59e0b">
+        <div class="rb-setup-name" style="color:#f59e0b">↪️ Session TP Reversion — Short</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Price is 1.5%+ ABOVE Session TP AND RSI above 62. Valid 9:30–11:30 AM only.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> Short at current price. Stop-loss above 3-day swing high. Target: Session TP. Exit by 11:30 AM regardless.</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Morning euphoria frequently overshoots the prior day's fair value. When RSI confirms overextension, the reversion is reliable within the morning window. After 11:30 AM the market has found a new equilibrium — the edge disappears.</div>
+      </div>
+
+      <div class="rb-setup-card" style="border-left:3px solid #4a9eff">
+        <div class="rb-setup-name" style="color:#4a9eff">⬆️⬇️ Gap Plays</div>
+        <div class="rb-setup-trigger"><strong>Trigger:</strong> Stock gapped up/down 0.8%+ from previous close. Observe the first 15 minutes — do not trade yet.</div>
+        <div class="rb-setup-action"><strong>Action:</strong> After 9:30 AM, if gap is holding (price above gap-open), trade in the gap direction. If gap is filling (price reverting), fade it toward the prior close. SL = gap fill level (prior close).</div>
+        <div class="rb-setup-why"><strong>Why it works:</strong> Gaps create clear reference levels. Sustained gaps attract momentum buyers. Failed gaps attract mean-reversion traders. Both sides are tradeable — wait to see which scenario is playing out before committing.</div>
       </div>
     </div>
 
-    <div class="rb-section-title rb-mt">Trading Time Windows — Critical</div>
-    <p class="rb-para">The time of day matters enormously in intraday trading. Each window has different market dynamics:</p>
+    <div class="rb-section-title rb-mt">Position Sizing — How It's Calculated</div>
+    <p class="rb-para">Enter your capital in the header input (₹ Capital). Every setup card and table row shows pre-calculated quantities across three risk tiers.</p>
+
+    <div class="rb-levels-table">
+      <div class="rb-levels-row rb-levels-header">
+        <div>Formula</div><div>Explanation</div><div>Example</div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--blue)">Qty = (Capital × Risk%) ÷ (Entry − SL)</div>
+        <div>Risk a fixed % of capital. The number of shares scales with the entry-to-SL gap — wide stop = fewer shares, tight stop = more shares.</div>
+        <div>₹10L capital, 1% risk, entry ₹102, SL ₹99 → Qty = (10,00,000 × 1%) ÷ (102−99) = ₹10,000 ÷ ₹3 = <strong>3,333 shares</strong></div>
+      </div>
+      <div class="rb-levels-row">
+        <div class="rb-level-name" style="color:var(--orange)">Margin = Position Value ÷ 5</div>
+        <div>NSE MIS (intraday) gives 5× leverage. You only block 1/5th of the position value as margin. Leverage does NOT change your share count — only your cash requirement.</div>
+        <div>3,333 sh × ₹102 = ₹3,40,000 position. Margin blocked = ₹3,40,000 ÷ 5 = <strong>₹68,000</strong></div>
+      </div>
+    </div>
+
+    <div class="rb-callout rb-callout-yellow">
+      <div class="rb-callout-icon">⚠️</div>
+      <div><strong>Common mistake:</strong> Leverage does not increase your position size in this formula. If you have ₹10L and 5× MIS, your <em>buying power</em> is ₹50L — but your <em>risk per trade</em> is still capped at 1% of your <em>actual capital</em> (₹10,000), not 1% of your buying power. Never use leverage to trade larger than your risk model allows.</div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Trading Time Windows</div>
     <div class="rb-time-grid">
-      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">9:00 – 9:15 AM</div><div class="rb-time-label">Pre-Market Prep</div><div>Review IntraContra watchlist. Note your levels. Set price alerts. No orders yet.</div></div>
-      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">9:15 – 9:30 AM</div><div class="rb-time-label">Opening Chaos</div><div>Observe only. Never trade the first 15 minutes — liquidity is thin and direction is unpredictable. Watch which direction the market opens.</div></div>
-      <div class="rb-time-card rb-time-prime"><div class="rb-time-period">9:30 – 10:15 AM</div><div class="rb-time-label">Prime Window</div><div>The best time for PDH/PDL breakouts and gap plays. Volume is highest. Moves are cleanest. This is when you execute.</div></div>
-      <div class="rb-time-card rb-time-prime"><div class="rb-time-period">10:15 – 11:30 AM</div><div class="rb-time-label">Momentum + Reversion</div><div>Continue to hold winning trades from the prime window. Good time for Session TP reversion setups. Trend continuation trades still work.</div></div>
-      <div class="rb-time-card rb-time-avoid"><div class="rb-time-period">11:30 AM – 12:30 PM</div><div class="rb-time-label">DEAD ZONE — No Trades</div><div>Lunch hour. Volume collapses. Random choppy moves. This is when bad trades happen. Put down the screen.</div></div>
-      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">12:30 – 2:00 PM</div><div class="rb-time-label">Afternoon Session</div><div>Institutional activity resumes. Continuation of morning trends or new direction. Be cautious — assess risk vs. time remaining.</div></div>
-      <div class="rb-time-card rb-time-exit"><div class="rb-time-period">2:00 – 3:15 PM</div><div class="rb-time-label">Exit Window</div><div>All intraday positions MUST be flat by 3:15 PM. Never hold intraday positions overnight — costs, risk, and gaps are undefined.</div></div>
+      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">9:00 – 9:15 AM</div><div class="rb-time-label">Pre-Market Prep</div><div>Review Tomorrow's Watchlist from last night. Note your PDH/PDL levels. Set price alerts on your broker. No orders yet.</div></div>
+      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">9:15 – 9:30 AM</div><div class="rb-time-label">Opening Range Forms</div><div>Observe only. The ORB high/low is being established. Never trade during this window — liquidity is thin, direction is unconfirmed. Watch gap direction and opening auction price.</div></div>
+      <div class="rb-time-card rb-time-prime"><div class="rb-time-period">9:30 – 10:15 AM</div><div class="rb-time-label">Prime Window — ORB + PDH/PDL</div><div>ORB is now confirmed. Check IntraContra live section for ORB Long/Short signals. PDH/PDL breakouts also execute here. Volume is highest — this is when the best setups play out.</div></div>
+      <div class="rb-time-card rb-time-prime"><div class="rb-time-period">10:15 – 11:30 AM</div><div class="rb-time-label">Momentum + Reversion</div><div>Hold winners from the prime window. Session TP Reversion setups are valid in this window. Trend continuation trades still work with confirmed volume.</div></div>
+      <div class="rb-time-card rb-time-avoid"><div class="rb-time-period">11:30 AM – 12:30 PM</div><div class="rb-time-label">DEAD ZONE — No Trades</div><div>Volume collapses. Choppy, directionless moves. Bad risk/reward. Close your screen if you must — this is how discipline is built.</div></div>
+      <div class="rb-time-card rb-time-observe"><div class="rb-time-period">12:30 – 2:00 PM</div><div class="rb-time-label">Afternoon Session</div><div>Institutional activity resumes. Continuation of morning trends possible. Be selective — less time remaining means less reward for the same risk.</div></div>
+      <div class="rb-time-card rb-time-exit"><div class="rb-time-period">2:00 – 3:15 PM</div><div class="rb-time-label">Exit All Positions</div><div>All intraday positions MUST be flat by 3:15 PM. After 3:15 PM the scanner switches to post-market mode and begins computing tomorrow's watchlist.</div></div>
     </div>
 
     <div class="rb-section-title rb-mt">Risk Tiers — Which to Use</div>
     <div class="rb-risk-grid">
       <div class="rb-risk-card" style="border-top:2px solid var(--green)">
         <div class="rb-risk-name">Normal (1% per trade)</div>
-        <div class="rb-risk-when">Use for: Standard PDH/PDL setups with clear volume confirmation</div>
+        <div class="rb-risk-when">Use for: Standard PDH/PDL setups, ORB breakouts with good but not exceptional confluence. Your default tier for most trades.</div>
       </div>
       <div class="rb-risk-card" style="border-top:2px solid var(--blue)">
         <div class="rb-risk-name">High Conviction (2% per trade)</div>
-        <div class="rb-risk-when">Use for: Multiple confluences (e.g., PDH Breakout + above 20D VWAP + strong global sentiment). Only 1–2 per week maximum.</div>
+        <div class="rb-risk-when">Use for: ORB Breakout + above intraday VWAP + strong Nifty trend + Screener-backed stock. Multiple independent signals agreeing. Maximum 1–2 times per week.</div>
       </div>
       <div class="rb-risk-card" style="border-top:2px solid var(--yellow)">
         <div class="rb-risk-name">Reduced (0.5% per trade)</div>
-        <div class="rb-risk-when">Use after: 2 consecutive losing trades. Automatically drop to half size. Let yourself recover psychology before sizing back up.</div>
+        <div class="rb-risk-when">Use after 2 consecutive losses. Drop to half-size automatically to protect psychology and capital while you recalibrate. Do not size back up until you have a winning trade.</div>
       </div>
+    </div>
+
+    <div class="rb-section-title rb-mt">Watchlist — Where Stocks Come From</div>
+    <p class="rb-para">IntraContra always includes 20 fixed high-liquidity F&amp;O names (Reliance, HDFC Bank, ICICI Bank, Infosys, etc.) as a baseline. When you run the Stock Screener, its HIGH_PROB_LONG and HIGH_PROB_SHORT picks are automatically merged in, expanding the universe with today's signal-driven names. Screener picks are labelled with a blue badge — they have higher priority in the sort order.</p>
+
+    <div class="rb-callout rb-callout-blue">
+      <div class="rb-callout-icon">💡</div>
+      <div><strong>Best workflow:</strong> Run the Stock Screener once after market close (~4 PM). Then open IntraContra — the watchlist now combines the 20 baseline liquid names with the Screener's top picks. The "Tomorrow's Watchlist" section will show any stocks from this combined list that closed near their PDH or PDL. Review those tonight. At 9:30 AM tomorrow, check the "Live Setups" section for ORB confirmations.</div>
     </div>
   </section>
 
