@@ -503,12 +503,15 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                 # ORB Long: live CMP broke and is ABOVE ORB High
                 if (cmp > orb_high and intraday_vwap and cmp > intraday_vwap):
                     entry    = _sf(orb_high * 1.001)
-                    # SL = intraday VWAP (tighter, meaningful: breakout invalidated if
-                    # price falls back below VWAP). Fall back to ORB Low if VWAP is
-                    # above entry (unusual — means VWAP hasn't caught up yet).
-                    use_vwap_sl = intraday_vwap and intraday_vwap < entry
-                    sl       = _sf(intraday_vwap) if use_vwap_sl else orb_low
-                    sl_label = f"VWAP ₹{_sf(intraday_vwap)}" if use_vwap_sl else f"ORB Low ₹{orb_low}"
+                    # SL = tighter of (Session TP, Intraday VWAP) — whichever is closer
+                    # to entry. Early session: Session TP dominates (VWAP only has 15 min
+                    # of data). Mid/late session: VWAP takes over as it builds conviction.
+                    # Only consider levels that are below entry (valid SL candidates).
+                    _sl_candidates = [v for v in [session_tp, intraday_vwap] if v and v < entry]
+                    sl       = _sf(max(_sl_candidates)) if _sl_candidates else orb_low
+                    sl_label = (f"Session TP ₹{session_tp}" if sl == session_tp
+                                else f"VWAP ₹{_sf(intraday_vwap)}" if sl == _sf(intraday_vwap)
+                                else f"ORB Low ₹{orb_low}")
                     risk     = max(entry - sl, 0.01) if (entry and sl) else orb_range
                     setups.append({
                         "setup": "ORB_LONG", "setup_label": "ORB Breakout ↑",
@@ -528,12 +531,13 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                 # ORB Short: live CMP broke and is BELOW ORB Low
                 elif (cmp < orb_low and intraday_vwap and cmp < intraday_vwap):
                     entry    = _sf(orb_low * 0.999)
-                    # SL = intraday VWAP (tighter, meaningful: breakdown invalidated if
-                    # price recovers back above VWAP). Fall back to ORB High if VWAP is
-                    # below entry (unusual — means VWAP hasn't caught down yet).
-                    use_vwap_sl = intraday_vwap and intraday_vwap > entry
-                    sl       = _sf(intraday_vwap) if use_vwap_sl else orb_high
-                    sl_label = f"VWAP ₹{_sf(intraday_vwap)}" if use_vwap_sl else f"ORB High ₹{orb_high}"
+                    # SL = tighter of (Session TP, Intraday VWAP) — whichever is closer
+                    # to entry. Mirror of ORB Long: only consider levels above entry.
+                    _sl_candidates = [v for v in [session_tp, intraday_vwap] if v and v > entry]
+                    sl       = _sf(min(_sl_candidates)) if _sl_candidates else orb_high
+                    sl_label = (f"Session TP ₹{session_tp}" if sl == session_tp
+                                else f"VWAP ₹{_sf(intraday_vwap)}" if sl == _sf(intraday_vwap)
+                                else f"ORB High ₹{orb_high}")
                     risk     = max(sl - entry, 0.01) if (entry and sl) else orb_range
                     setups.append({
                         "setup": "ORB_SHORT", "setup_label": "ORB Breakdown ↓",
