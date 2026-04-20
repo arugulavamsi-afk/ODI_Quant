@@ -508,9 +508,14 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                     # of data). Mid/late session: VWAP takes over as it builds conviction.
                     # Only consider levels that are below entry (valid SL candidates).
                     _sl_candidates = [v for v in [session_tp, intraday_vwap] if v and v < entry]
-                    sl       = _sf(max(_sl_candidates)) if _sl_candidates else orb_low
-                    sl_label = (f"Session TP ₹{session_tp}" if sl == session_tp
-                                else f"VWAP ₹{_sf(intraday_vwap)}" if sl == _sf(intraday_vwap)
+                    sl_raw   = max(_sl_candidates) if _sl_candidates else orb_low
+                    # Floor: SL must be at least 0.3% below entry — prevents trivially tight
+                    # stops when VWAP/Session TP sits just a tick below entry, which would
+                    # produce an absurdly large position size.
+                    sl_floor = entry * 0.997
+                    sl       = _sf(min(sl_raw, sl_floor))
+                    sl_label = (f"Session TP ₹{session_tp}" if sl_raw == session_tp
+                                else f"VWAP ₹{_sf(intraday_vwap)}" if sl_raw == _sf(intraday_vwap)
                                 else f"ORB Low ₹{orb_low}")
                     risk     = max(entry - sl, 0.01) if (entry and sl) else orb_range
                     setups.append({
@@ -531,12 +536,14 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                 # ORB Short: live CMP broke and is BELOW ORB Low
                 elif (cmp < orb_low and intraday_vwap and cmp < intraday_vwap):
                     entry    = _sf(orb_low * 0.999)
-                    # SL = tighter of (Session TP, Intraday VWAP) — whichever is closer
-                    # to entry. Mirror of ORB Long: only consider levels above entry.
+                    # SL = tighter of (Session TP, Intraday VWAP) — mirror of ORB Long: only consider levels above entry.
                     _sl_candidates = [v for v in [session_tp, intraday_vwap] if v and v > entry]
-                    sl       = _sf(min(_sl_candidates)) if _sl_candidates else orb_high
-                    sl_label = (f"Session TP ₹{session_tp}" if sl == session_tp
-                                else f"VWAP ₹{_sf(intraday_vwap)}" if sl == _sf(intraday_vwap)
+                    sl_raw   = min(_sl_candidates) if _sl_candidates else orb_high
+                    # Floor: SL must be at least 0.3% above entry — same noise protection as ORB Long.
+                    sl_floor = entry * 1.003
+                    sl       = _sf(max(sl_raw, sl_floor))
+                    sl_label = (f"Session TP ₹{session_tp}" if sl_raw == session_tp
+                                else f"VWAP ₹{_sf(intraday_vwap)}" if sl_raw == _sf(intraday_vwap)
                                 else f"ORB High ₹{orb_high}")
                     risk     = max(sl - entry, 0.01) if (entry and sl) else orb_range
                     setups.append({
