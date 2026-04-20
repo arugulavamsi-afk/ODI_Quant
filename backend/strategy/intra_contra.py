@@ -502,9 +502,14 @@ def _process_stock(sym: str, info: dict) -> dict | None:
 
                 # ORB Long: live CMP broke and is ABOVE ORB High
                 if (cmp > orb_high and intraday_vwap and cmp > intraday_vwap):
-                    entry = _sf(orb_high * 1.001)
-                    sl    = orb_low
-                    risk  = max(entry - sl, 0.01) if (entry and sl) else orb_range
+                    entry    = _sf(orb_high * 1.001)
+                    # SL = intraday VWAP (tighter, meaningful: breakout invalidated if
+                    # price falls back below VWAP). Fall back to ORB Low if VWAP is
+                    # above entry (unusual — means VWAP hasn't caught up yet).
+                    use_vwap_sl = intraday_vwap and intraday_vwap < entry
+                    sl       = _sf(intraday_vwap) if use_vwap_sl else orb_low
+                    sl_label = f"VWAP ₹{_sf(intraday_vwap)}" if use_vwap_sl else f"ORB Low ₹{orb_low}"
+                    risk     = max(entry - sl, 0.01) if (entry and sl) else orb_range
                     setups.append({
                         "setup": "ORB_LONG", "setup_label": "ORB Breakout ↑",
                         "icon": "🚀",
@@ -516,15 +521,20 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                         "note": (f"ORB High ₹{orb_high} · ORB Low ₹{orb_low} · "
                                  f"Range ₹{_sf(orb_range)} · "
                                  f"Intraday VWAP ₹{intraday_vwap} (price above = bullish) · "
-                                 f"SL at ORB Low · PDH ₹{pdh} next resistance"),
+                                 f"SL at {sl_label} · PDH ₹{pdh} next resistance"),
                         "rr": "1:2 / 1:3",
                     })
 
                 # ORB Short: live CMP broke and is BELOW ORB Low
                 elif (cmp < orb_low and intraday_vwap and cmp < intraday_vwap):
-                    entry = _sf(orb_low * 0.999)
-                    sl    = orb_high
-                    risk  = max(sl - entry, 0.01) if (entry and sl) else orb_range
+                    entry    = _sf(orb_low * 0.999)
+                    # SL = intraday VWAP (tighter, meaningful: breakdown invalidated if
+                    # price recovers back above VWAP). Fall back to ORB High if VWAP is
+                    # below entry (unusual — means VWAP hasn't caught down yet).
+                    use_vwap_sl = intraday_vwap and intraday_vwap > entry
+                    sl       = _sf(intraday_vwap) if use_vwap_sl else orb_high
+                    sl_label = f"VWAP ₹{_sf(intraday_vwap)}" if use_vwap_sl else f"ORB High ₹{orb_high}"
+                    risk     = max(sl - entry, 0.01) if (entry and sl) else orb_range
                     setups.append({
                         "setup": "ORB_SHORT", "setup_label": "ORB Breakdown ↓",
                         "icon": "📉",
@@ -536,7 +546,7 @@ def _process_stock(sym: str, info: dict) -> dict | None:
                         "note": (f"ORB Low ₹{orb_low} · ORB High ₹{orb_high} · "
                                  f"Range ₹{_sf(orb_range)} · "
                                  f"Intraday VWAP ₹{intraday_vwap} (price below = bearish) · "
-                                 f"SL at ORB High · PDL ₹{pdl} next support"),
+                                 f"SL at {sl_label} · PDL ₹{pdl} next support"),
                         "rr": "1:2 / 1:3",
                     })
 
