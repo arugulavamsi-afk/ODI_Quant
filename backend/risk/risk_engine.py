@@ -70,11 +70,12 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from config import ACCOUNT_CAPITAL, RISK_PER_TRADE_PCT, RISK_WARNING_PCT
+    from config import ACCOUNT_CAPITAL, RISK_PER_TRADE_PCT, RISK_WARNING_PCT, LEVERAGE
 except ImportError:
     ACCOUNT_CAPITAL    = 500_000   # fallback if config unavailable
     RISK_PER_TRADE_PCT = 1.0
     RISK_WARNING_PCT   = 2.0
+    LEVERAGE           = 5
 
 _SL_MIN_PCT         = 0.003   # 0.3%  — floor so SL isn't inside tick noise
 _SL_FILTER_PCT      = 0.02    # 2.0%  — flag (not cap) for setups with wide natural SL
@@ -87,7 +88,8 @@ _MIN_T1_NET_PCT     = 0.005   # 0.5%  — minimum net gain at T1 to be worth boo
 
 
 def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = None,
-                           atr_multiplier: float = 1.5, capital: float = None) -> dict:
+                           atr_multiplier: float = 1.5, capital: float = None,
+                           leverage: float = None) -> dict:
     if df is None or len(df) < 5:
         return {}
 
@@ -247,17 +249,27 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
         rr_t3 = round(t3_net_gain / actual_risk, 2) if actual_risk > 0 else 0
 
         # ── Capital-relative position sizing ─────────────────────────────────
-        # Use caller-supplied capital, or fall back to config value.
-        effective_capital = float(capital) if capital and capital > 0 else ACCOUNT_CAPITAL
+        # Use caller-supplied capital/leverage, or fall back to config values.
+        effective_capital  = float(capital)   if capital   and capital   > 0 else ACCOUNT_CAPITAL
+        effective_leverage = float(leverage)  if leverage  and leverage  > 0 else LEVERAGE
+
+        # Affordable size: maximum shares purchasable with full leveraged capital.
+        #   affordable_size = (capital × leverage) / entry_fill
+        # This hard-caps position sizes so that margin is never exceeded even when
+        # the risk-based size would require more buying power than available.
+        affordable_size = int((effective_capital * effective_leverage) / entry_fill) if entry_fill > 0 else 0
 
         # Recommended position: risk exactly RISK_PER_TRADE_PCT of capital.
         #   shares = (capital × risk_pct) / (fill → SL distance per share)
         recommended_risk_amt = effective_capital * RISK_PER_TRADE_PCT / 100.0
         pos_size_recommended = int(recommended_risk_amt / actual_risk) if actual_risk > 0 else 0
+        pos_size_recommended = min(pos_size_recommended, affordable_size)
 
         # Additional tiers so the trader can dial in their own risk tolerance.
         pos_size_half_pct = int((effective_capital * 0.005) / actual_risk) if actual_risk > 0 else 0
+        pos_size_half_pct = min(pos_size_half_pct, affordable_size)
         pos_size_2_pct    = int((effective_capital * 0.020) / actual_risk) if actual_risk > 0 else 0
+        pos_size_2_pct    = min(pos_size_2_pct, affordable_size)
 
         # What % of configured capital is at risk with the recommended position?
         capital_risk_amt  = round(actual_risk * pos_size_recommended, 2)
@@ -271,9 +283,14 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
         actual_risk_pct = round((actual_risk / entry_fill) * 100, 2) if entry_fill > 0 else 0
 
         # Append capital risk context to setup note.
+        affordable_note = (
+            f" Affordable size at {effective_leverage:.0f}× leverage: {affordable_size} shares."
+            if pos_size_recommended == affordable_size else ""
+        )
         setup_note += (
             f" Position (1% of ₹{effective_capital:,.0f}): {pos_size_recommended} shares "
             f"risking ₹{capital_risk_amt:,.0f} ({capital_risk_pct:.2f}% of capital)."
+            f"{affordable_note}"
         )
         if capital_risk_high:
             setup_note += (
@@ -305,9 +322,11 @@ def calculate_trade_levels(df: pd.DataFrame, direction: str, atr_value: float = 
             "rr_t3":                  rr_t3,
             # Capital-relative sizing (ACCOUNT_CAPITAL from config.py)
             "configured_capital":     effective_capital,
-            "position_size":          pos_size_recommended,      # shares at RISK_PER_TRADE_PCT
-            "position_size_half_pct": pos_size_half_pct,         # shares at 0.5% risk
-            "position_size_2pct":     pos_size_2_pct,            # shares at 2.0% risk
+            "leverage_used":          effective_leverage,
+            "affordable_size":        affordable_size,           # max shares within capital × leverage
+            "position_size":          pos_size_recommended,      # shares at RISK_PER_TRADE_PCT (≤ affordable)
+            "position_size_half_pct": pos_size_half_pct,         # shares at 0.5% risk (≤ affordable)
+            "position_size_2pct":     pos_size_2_pct,            # shares at 2.0% risk (≤ affordable)
             "capital_risk_amt":       capital_risk_amt,           # ₹ at risk (recommended position)
             "capital_risk_pct":       capital_risk_pct,           # % of capital at risk
             "capital_risk_high":      capital_risk_high,          # True if > RISK_WARNING_PCT

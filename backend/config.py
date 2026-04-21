@@ -16,6 +16,12 @@ RISK_PER_TRADE_PCT   = 1.0         # % of capital — max risk per trade (defaul
 #   Set to 2.0 to flag any trade that would risk more than 2% of your capital.
 RISK_WARNING_PCT     = 2.0         # % of capital — threshold for ⚠ risk warning
 
+# LEVERAGE: Maximum leverage available (e.g. 5 = 5× your capital).
+#   Used to compute the affordable position size: (capital × leverage) / entry_price.
+#   Position sizes are always capped at this affordable limit regardless of the
+#   risk-based size, preventing margin calls when SL is very tight.
+LEVERAGE             = 5           # maximum leverage (intraday equity default)
+
 # ── Portfolio-Level Risk Controls ─────────────────────────────────────────────
 # MAX_DAILY_LOSS_PCT: Stop trading for the day when cumulative loss hits this %.
 #   Professional desks enforce this without exception. Prevents revenge trading
