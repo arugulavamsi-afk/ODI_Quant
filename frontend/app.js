@@ -1989,9 +1989,10 @@ function buildIcDetail(s) {
         { label: 'High Conv 2%', pct: 0.02,  col: 'var(--orange)' },
         { label: 'Reduced 0.5%', pct: 0.005, col: 'var(--text-dim)' },
       ];
+      const affordableQty2 = entryRef > 0 ? Math.floor((cap2 * LEVERAGE) / entryRef) : Infinity;
       const rows = tiers.map(t => {
         const atRisk = Math.round(cap2 * t.pct);
-        const qty    = Math.floor(atRisk / riskRef);
+        const qty    = Math.min(Math.floor(atRisk / riskRef), affordableQty2);
         const posVal = Math.round(qty * entryRef);
         const margin = Math.round(posVal / LEVERAGE);
         return `<div class="ic-sizing-row">
@@ -2036,17 +2037,18 @@ function buildIcDetail(s) {
     const cap         = icGlobalCapital || 1000000;
     const LEVERAGE    = 5;                          // NSE MIS — margin blocked = posVal / 5
     const riskAmt     = risk && Math.abs(risk) > 0 ? Math.abs(risk) : null;
-    // Formula: qty = (Capital × Risk%) / (Entry − SL)
-    // Leverage does NOT change qty — it only reduces margin required to 1/5th of position value.
+    // Formula: qty = min((Capital × Risk%) / (Entry − SL), (Capital × Leverage) / Entry)
+    // The affordable cap prevents qty from exceeding available margin even when SL is tight.
     const sizingHtml  = riskAmt ? (() => {
       const tiers = [
         { label: 'Normal 1%',    pct: 0.01,  col: '#4a9eff' },
         { label: 'High Conv 2%', pct: 0.02,  col: 'var(--orange)' },
         { label: 'Reduced 0.5%', pct: 0.005, col: 'var(--text-dim)' },
       ];
+      const affordableQty = st.entry > 0 ? Math.floor((cap * LEVERAGE) / st.entry) : Infinity;
       return tiers.map(t => {
         const atRisk       = Math.round(cap * t.pct);                   // ₹ at risk
-        const qty          = Math.floor(atRisk / riskAmt);              // shares
+        const qty          = Math.min(Math.floor(atRisk / riskAmt), affordableQty);  // capped at affordable
         const posVal       = Math.round(qty * (st.entry || 0));         // full exposure
         const marginBlocked = Math.round(posVal / LEVERAGE);            // actual margin out
         return `<div class="ic-sizing-row">
