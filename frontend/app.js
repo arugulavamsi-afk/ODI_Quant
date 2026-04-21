@@ -1598,7 +1598,7 @@ function renderIntraContra(data) {
 
   renderIcCtx(data.market_context || {});
   renderIcTimeBar();
-  icStocks = data.stocks || [];
+  icStocks = (data.stocks || []).map(s => ({ ...s, confidence: computeIcConfidence(s) }));
   renderIcChips(data.summary || {});
   applyIcFilters();
 }
@@ -1699,6 +1699,44 @@ function renderIcChips(s) {
   `;
 }
 
+// ── Confidence Score ──────────────────────────────────────────────────────
+function computeIcConfidence(s) {
+  let score = 0;
+
+  // Setup presence & type quality (max 50)
+  if (s.setups?.length) {
+    score += 25;
+    const types = s.setups.map(st => st.setup);
+    if (types.some(t => t.startsWith('ORB')))                                         score += 25; // live confirmed breakout
+    else if (types.some(t => t === 'PDH_BREAKOUT' || t === 'PDL_BREAKDOWN'))          score += 18;
+    else if (types.some(t => t === 'GAP_UP' || t === 'GAP_DOWN'))                     score += 13;
+    else                                                                               score += 8;  // session reversion
+  } else if (s.qualified) {
+    score += 10;
+  }
+
+  // ATR% — minimum tradeable volatility (max 20)
+  if      (s.atr_pct >= 2.5) score += 20;
+  else if (s.atr_pct >= 1.5) score += 14;
+  else if (s.atr_pct >= 1.0) score += 5;
+
+  // Volume liquidity (max 15)
+  if      (s.avg_vol_l >= 200) score += 15;
+  else if (s.avg_vol_l >= 100) score += 10;
+  else if (s.avg_vol_l >= 50)  score += 5;
+
+  // RSI sweet spot — 50-70 long, 30-50 short (max 10)
+  if (s.rsi_14 != null) {
+    if      (s.rsi_14 >= 50 && s.rsi_14 <= 70) score += 10;
+    else if (s.rsi_14 >= 40 && s.rsi_14 <= 75) score += 5;
+  }
+
+  // Screener-sourced (data-backed, not manual) (max 5)
+  if (s.watchlist_source === 'screener') score += 5;
+
+  return Math.min(score, 100);
+}
+
 // ── Filters + Sort ────────────────────────────────────────────────────────
 function setIcFilter(el, f) {
   document.querySelectorAll('.ic-tab').forEach(t => t.classList.remove('active'));
@@ -1790,6 +1828,7 @@ function buildIcSection(type, title, subtitle, stocks, startCollapsed = false) {
               <tr>
                 <th></th>
                 <th onclick="sortIc('symbol')">Symbol &#8597;</th>
+                <th onclick="sortIc('confidence')" title="Confidence score: setup quality + ATR + volume + RSI + screener source">Conf &#8597;</th>
                 <th>Sector</th>
                 <th onclick="sortIc('cmp')">CMP &#8597;</th>
                 <th onclick="sortIc('chg_pct')">Chg% &#8597;</th>
@@ -1931,6 +1970,15 @@ function buildIcRow(s) {
     <tr id="${rowId}" class="ic-stock-row ${s.has_setup ? 'ic-has-setup' : ''}" onclick="toggleIcRow('${id}')">
       <td class="ic-expand">${icExpanded.has(id) ? '▼' : '▶'}</td>
       <td><strong>${s.symbol}</strong>${aboveSTPDot}${screenerBadge}<br><span style="color:var(--text-dim);font-size:10px">${s.name}</span></td>
+      <td style="text-align:center">${(() => {
+        const c = s.confidence ?? 0;
+        const [label, col] = c >= 80 ? ['HIGH',   'var(--green)']
+                           : c >= 60 ? ['MED',    'var(--orange)']
+                           : c >= 40 ? ['LOW',    '#f59e0b']
+                           :           ['WATCH',  'var(--text-dim)'];
+        return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${col}" title="Confidence ${c}/100">${c}</span><br>
+                <span style="font-size:9px;color:${col};opacity:0.8">${label}</span>`;
+      })()}</td>
       <td><span style="color:var(--text-muted)">${s.sector}</span></td>
       <td style="font-family:var(--mono)">${s.is_live
         ? `<span class="ic-live-price" title="Live 5-min price">₹${fmt(s.live_price ?? s.cmp)}</span>`
